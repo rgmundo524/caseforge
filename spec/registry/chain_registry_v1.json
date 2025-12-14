@@ -1,0 +1,82 @@
+{
+  "bitcoin": {
+    "address_url_template": "https://mempool.space/address/<address>",
+    "tx_url_template": "https://mempool.space/tx/<tx>"
+  },
+  "ethereum": {
+    "address_url_template": "https://etherscan.io/address/<address>",
+    "tx_url_template": "https://etherscan.io/tx/<tx>"
+  },
+  "cardano": {
+    "address_url_template": "https://adastat.net/addresses/<address>",
+    "tx_url_template": "https://adastat.net/transactions/<tx>"
+  },
+  "hyperliquid": {
+    "address_url_template": "https://hypurrscan.io/address/<address>",
+    "tx_url_template": "https://hypurrscan.io/tx/<tx>"
+  },
+  "litecoin": {
+    "address_url_template": "https://litecoinspace.org/address/<address>",
+    "tx_url_template": "https://litecoinspace.org/tx/<tx>"
+  },
+  "bitcoin_cash": {
+    "address_url_template": "https://blockchair.com/bitcoin-cash/address/<address>",
+    "tx_url_template": "https://blockchair.com/bitcoin-cash/transaction/<tx>"
+  },
+  "dogecoin": {
+    "address_url_template": "https://blockchair.com/dogecoin/address/<address>",
+    "tx_url_template": "https://blockchair.com/dogecoin/transaction/<tx>"
+  },
+  "bnb_chain": {
+    "address_url_template": "https://bscscan.com/address/<address>",
+    "tx_url_template": "https://bscscan.com/tx/<tx>"
+  },
+  "polygon": {
+    "address_url_template": "https://polygonscan.com/address/<address>",
+    "tx_url_template": "https://polygonscan.com/tx/<tx>"
+  },
+  "arbitrum": {
+    "address_url_template": "https://arbiscan.io/address/<address>",
+    "tx_url_template": "https://arbiscan.io/tx/<tx>"
+  },
+  "optimism": {
+    "address_url_template": "https://optimistic.etherscan.io/address/<address>",
+    "tx_url_template": "https://optimistic.etherscan.io/tx/<tx>"
+  },
+  "avalanche": {
+    "address_url_template": "https://snowtrace.io/address/<address>",
+    "tx_url_template": "https://snowtrace.io/tx/<tx>"
+  },
+  "solana": {
+    "address_url_template": "https://solscan.io/account/<address>",
+    "tx_url_template": "https://solscan.io/tx/<tx>"
+  },
+  "tron": {
+    "address_url_template": "https://tronscan.org/#/address/<address>",
+    "tx_url_template": "https://tronscan.org/#/transaction/<tx>"
+  },
+  "stacks": {
+    "address_url_template": "https://explorer.hiro.so/address/<address>",
+    "tx_url_template": "https://explorer.hiro.so/txid/<tx>"
+  },
+  "polkadot": {
+    "address_url_template": "https://polkadot.subscan.io/account/<address>",
+    "tx_url_template": "https://polkadot.subscan.io/extrinsic/<tx>"
+  },
+  "scroll": {
+    "address_url_template": "https://scrollscan.com/address/<address>",
+    "tx_url_template": "https://scrollscan.com/tx/<tx>"
+  },
+  "sui": {
+    "address_url_template": "https://suiscan.xyz/mainnet/account/<address>",
+    "tx_url_template": "https://suiscan.xyz/mainnet/tx/<tx>"
+  },
+  "zcash": {
+    "address_url_template": "https://blockchair.com/zcash/address/<address>",
+    "tx_url_template": "https://blockchair.com/zcash/transaction/<tx>"
+  },
+  "monero": {
+    "address_url_template": null,
+    "tx_url_template": "https://monerohash.com/explorer/tx/<tx>"
+  }
+}

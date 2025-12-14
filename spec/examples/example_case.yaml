@@ -1,0 +1,76 @@
+case:
+  case_number: "02608"
+  internal_case_id: "CB-2024-02608"
+  report_type: "Source of Funds Notification"
+  report_date: "2024-10-21"
+  case_matter: "Cryptocurrency theft utilizing a phishing notification"
+
+recipient:
+  vasp_name: "Binance"
+  addressee_group: "Compliance Team"
+
+investigator:
+  name: "Reymundo Gomez"
+  title: "Blockchain Investigator"
+  organization: "CipherBlade"
+  email: "investigations@cipherblade.com"
+  phone: "+1-303-555-0199"
+  telegram: "@RGomez_CB"
+
+templates:
+  letter_template_id: "sof_notification_v1"
+  language: "en"
+
+stolen_assets:
+  assets:
+    - name: "Bitcoin"
+      symbol: "BTC"
+      chain_id: "bitcoin"
+      amount: 11.50557757
+    - name: "Ether"
+      symbol: "ETH"
+      chain_id: "ethereum"
+      amount: 90.055
+
+deposited_assets:
+  assets:
+    - name: "Bitcoin"
+      symbol: "BTC"
+      chain_id: "bitcoin"
+      amount: 11.50557757
+    - name: "Tether USD"
+      symbol: "USDT"
+      chain_id: "ethereum"
+      amount: 50000
+  total_usd_estimate: 214330.12
+
+chains_in_scope:
+  - chain_id: "bitcoin"
+    accounting_model: "utxo"
+  - chain_id: "polygon"
+    accounting_model: "account"
+
+figures:
+  - figure_id: "fig-001"
+    file_type: "pdf"
+    orientation: "portrait"
+    caption: "Flow of funds from victim to Binance on Bitcoin."
+    explanation: null
+    chains_covered: ["bitcoin"]
+
+  - figure_id: "fig-002"
+    file_type: "png"
+    orientation: "landscape"
+    caption: "Pre-deposit flow including bridging activity."
+    explanation: "This figure includes non-deposit chains for narrative context."
+    chains_covered: ["bitcoin", "ethereum", "thorchain", "polygon"]
+
+law_enforcement:
+  reported: true
+  agency: "N/A"
+  report_reference: "N/A"
+
+closing:
+  signatory_name: "Reymundo Gomez"
+  signatory_title: "Blockchain Investigator"
+  signatory_organization: "CipherBlade"

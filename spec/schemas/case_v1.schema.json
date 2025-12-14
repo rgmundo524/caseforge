@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.internal/schemas/case.v1.schema.json",
+  "title": "Case YAML v1 (Ephemeral)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case",
+    "recipient",
+    "investigator",
+    "templates",
+    "stolen_assets",
+    "deposited_assets",
+    "chains_in_scope",
+    "figures",
+    "law_enforcement",
+    "closing"
+  ],
+  "properties": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_number",
+        "report_type",
+        "report_date",
+        "case_matter"
+      ],
+      "properties": {
+        "case_number": {
+          "type": "string",
+          "minLength": 1
+        },
+        "internal_case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "report_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "report_date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "case_matter": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "recipient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "vasp_name",
+        "addressee_group"
+      ],
+      "properties": {
+        "vasp_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "addressee_group": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "investigator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "title",
+        "organization",
+        "email"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "organization": {
+          "type": "string",
+          "minLength": 1
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "telegram": {
+          "type": "string"
+        }
+      }
+    },
+    "templates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "letter_template_id",
+        "language"
+      ],
+      "properties": {
+        "letter_template_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "en"
+          ]
+        }
+      }
+    },
+    "stolen_assets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assets"
+      ],
+      "properties": {
+        "assets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/asset_entry"
+          }
+        }
+      }
+    },
+    "deposited_assets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assets"
+      ],
+      "properties": {
+        "assets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/asset_entry"
+          }
+        },
+        "total_usd_estimate": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "chains_in_scope": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "chain_id",
+          "accounting_model"
+        ],
+        "properties": {
+          "chain_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "accounting_model": {
+            "type": "string",
+            "enum": [
+              "utxo",
+              "account"
+            ]
+          }
+        }
+      }
+    },
+    "figures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "figure_id",
+          "file_type",
+          "orientation",
+          "caption",
+          "chains_covered"
+        ],
+        "properties": {
+          "figure_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "file_type": {
+            "type": "string",
+            "enum": [
+              "png",
+              "svg",
+              "pdf"
+            ]
+          },
+          "orientation": {
+            "type": "string",
+            "enum": [
+              "portrait",
+              "landscape"
+            ]
+          },
+          "caption": {
+            "type": "string",
+            "minLength": 1
+          },
+          "explanation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "chains_covered": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "law_enforcement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reported"
+      ],
+      "properties": {
+        "reported": {
+          "type": "boolean"
+        },
+        "agency": {
+          "type": "string"
+        },
+        "report_reference": {
+          "type": "string"
+        }
+      }
+    },
+    "closing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signatory_name",
+        "signatory_title",
+        "signatory_organization"
+      ],
+      "properties": {
+        "signatory_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signatory_title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signatory_organization": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "asset_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "symbol",
+        "chain_id",
+        "amount"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]{2,12}$"
+        },
+        "chain_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "amount": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    }
+  }
+}
