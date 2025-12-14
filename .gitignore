@@ -1,0 +1,38 @@
+# Build outputs
+build/
+report/output/*
+!report/output/.gitkeep
+report/generated/*
+!report/generated/.gitkeep
+!report/generated/tables/
+report/generated/tables/*
+!report/generated/tables/.gitkeep
+artifacts/
+**/attachments.zip
+*.pdf
+
+# Rust
+/target/
+Cargo.lock
+
+# Python
+__pycache__/
+*.pyc
+
+# LaTeX
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.lof
+*.lot
+*.bbl
+*.blg
+
+# Temp
+*.tmp
+*.bak
+.DS_Store
