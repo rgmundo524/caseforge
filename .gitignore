@@ -1,0 +1,11 @@
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Local tooling / editors
+.obsidian/
+
+# devenv generated files
+.devenv/
+.devenv.flake.nix
+devenv.lock

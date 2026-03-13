@@ -1,0 +1,4 @@
+name: case
+type: duckdb
+options:
+  filename: ../../data/case.duckdb
