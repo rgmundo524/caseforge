@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""ProjForge CLI wrapper.
+"""Legacy ProjForge CLI wrapper.
 
-Why this file exists:
-- Running `python tools/ProjForge.py ...` sets sys.path[0] to tools/.
-- Our package lives one directory up at ./projforge, so we add the project root to sys.path.
-
-Preferred invocation (also works):
-  python -m projforge.cli <command> ...
+Kept for backward compatibility. Use `python tools/CaseForge.py ...` for the
+canonical command path.
 """
 
 import sys
@@ -20,4 +16,3 @@ from projforge.cli import main  # noqa: E402
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

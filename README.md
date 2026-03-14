@@ -1,6 +1,6 @@
-# ProjForge
+# CaseForge
 
-ProjForge creates a **self-contained Evidence.dev project per case**.
+CaseForge creates a **self-contained Evidence.dev project per case**.
 
 Each case directory is its own standalone Evidence project.  
 That means each case can:
@@ -18,7 +18,7 @@ No installation required yet.
 
 Run commands directly using:
 
-    python tools/ProjForge.py <command> ...
+    python tools/CaseForge.py <command> ...
 
 ---
 
@@ -26,21 +26,21 @@ Run commands directly using:
 
 ## Create a New Case
 
-    python tools/ProjForge.py new-case \
+    python tools/CaseForge.py new-case \
       --cases-home /path/to/cases-home \
       --case-id 12343 \
       --title "Avail Holding Ltd"
 
 ### Example
 
-    python tools/ProjForge.py new-case \
-      --cases-home /Blockchain-Nodes/ProjForge \
+    python tools/CaseForge.py new-case \
+      --cases-home /Blockchain-Nodes/CaseForge \
       --case-id 12343 \
       --title "Test Case"
 
 This creates:
 
-    /Blockchain-Nodes/ProjForge/12343_<timestamp>/
+    /Blockchain-Nodes/CaseForge/12343_<timestamp>/
 
 That directory is now the repo root for that case.
 
@@ -48,7 +48,7 @@ That directory is now the repo root for that case.
 
 # After Case Creation
 
-    cd /Blockchain-Nodes/ProjForge/<case_slug>
+    cd /Blockchain-Nodes/CaseForge/<case_slug>
     npm install
     npm run dev
 
@@ -108,7 +108,7 @@ When creating a case:
 
    It will be copied.
 
-2. Otherwise ProjForge runs:
+2. Otherwise CaseForge runs:
 
        git clone --depth 1 https://github.com/evidence-dev/template
 

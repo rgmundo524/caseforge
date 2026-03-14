@@ -10,8 +10,8 @@ from .build import build_db
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="projforge",
-        description="ProjForge (v1.x): per-case Evidence scaffolding + intake + build",
+        prog="caseforge",
+        description="CaseForge (v1.x): per-case Evidence scaffolding + intake + build",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         print("  npm run dev")
         print("")
         print("Then (after you place CSVs into data/raw):")
-        print("  python /path/to/ProjForge.py build-db --sources")
+        print("  python /path/to/CaseForge.py build-db --sources")
         return 0
 
     if args.cmd == "add-files":
@@ -185,3 +185,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
