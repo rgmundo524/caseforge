@@ -18,7 +18,7 @@ def _repo_root() -> Path:
     CaseForge repo root.
 
     Assumes this file lives at:
-      <repo_root>/projforge/case_scaffold.py
+      <repo_root>/caseforge/case_scaffold.py
     """
     return Path(__file__).resolve().parent.parent
 

@@ -6,9 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from projforge.build import build_db
-from projforge.intake import add_files
-from projforge.normalize import normalize_db
+from caseforge.build import build_db
+from caseforge.intake import add_files
+from caseforge.normalize import normalize_db
 
 
 DUCKDB_BIN = shutil.which("duckdb")

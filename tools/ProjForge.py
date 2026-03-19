@@ -11,7 +11,7 @@ from pathlib import Path
 # Add project root (parent of tools/) to import path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from projforge.cli import main  # noqa: E402
+from caseforge.cli import main  # noqa: E402
 
 
 if __name__ == "__main__":
