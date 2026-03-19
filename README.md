@@ -2,13 +2,7 @@
 
 CaseForge creates a **self-contained Evidence.dev project per case**.
 
-Each case directory is its own standalone Evidence project.  
-That means each case can:
-
-- Run locally (`npm run dev`)
-- Be built as static output (`npm run build`)
-- Be archived or delivered to a client
-- Be hosted independently later
+Each case directory is its own standalone Evidence project.
 
 ---
 
@@ -31,135 +25,63 @@ Run commands directly using:
       --case-id 12343 \
       --title "Avail Holding Ltd"
 
-### Example
+## Register Input Files
 
-    python tools/CaseForge.py new-case \
-      --cases-home /Blockchain-Nodes/CaseForge \
-      --case-id 12343 \
-      --title "Test Case"
+`add-files` only copies/registers raw files + metadata in `data/manifest.json`.
 
-This creates:
+### TRM account
 
-    /Blockchain-Nodes/CaseForge/12343_<timestamp>/
+    python tools/CaseForge.py add-files trm.csv --source trm --model account
 
-That directory is now the repo root for that case.
+### TRM UTXO
 
----
+    python tools/CaseForge.py add-files trm.csv --source trm --model utxo
 
-# After Case Creation
+### Qlue account
 
-    cd /Blockchain-Nodes/CaseForge/<case_slug>
-    npm install
-    npm run dev
+    python tools/CaseForge.py add-files qlue_account.csv --source qlue --export-type account --blockchain ethereum
 
-Open the URL printed by Evidence.
+### Qlue UTXO
+
+    python tools/CaseForge.py add-files qlue_utxo.csv --source qlue --export-type utxo --blockchain bitcoin
+
+## Normalize
+
+`normalize` reads manifest entries, validates headers, stages each CSV in DuckDB, runs source-specific SQL templates, and recreates:
+
+- `normalized_combined_transactions`
+- `v_normalized_transactions`
+
+Run:
+
+    python tools/CaseForge.py normalize
+
+## Build DB
+
+`build-db` now assumes normalization is complete and only builds downstream case views/tables from `normalized_combined_transactions`.
+
+Run:
+
+    python tools/CaseForge.py build-db
+
+Optional:
+
+    python tools/CaseForge.py build-db --sources
 
 ---
 
 # Data Workflow
 
-## 1) Place Raw Files
-
-Put vendor exports and manual CSV files into:
-
-    data/raw/
-
-Do not modify raw files in place.  
-If transformations are required, save a new file version.
-
----
-
-## 2) Build the Case Database
-
-    duckdb data/case.duckdb < data/load.sql
-
-This runs the per-case loader snapshot.
-
----
-
-## 3) Refresh Evidence Sources
-
-    npm run sources
-
-Reload the browser.
-
----
-
-# Build Static Output (Optional)
-
-    npm run build
-
-This creates a `build/` directory that can be hosted on:
-
-- A VPS
-- A static server
-- An internal investigation server
-- Packaged for client delivery
-
----
-
-# Template Behavior
-
-When creating a case:
-
-1. If a local template exists at:
-
-       <cases-home>/evidence-templates/template/
-
-   It will be copied.
-
-2. Otherwise CaseForge runs:
-
-       git clone --depth 1 https://github.com/evidence-dev/template
-
----
-
-# Case Structure
-
-Each case directory contains:
-
-    pages/
-      01-introduction.md
-      02-off-chain-analysis.md
-      03-on-chain-analysis.md
-      04-dormant-addresses.md
-      05-conclusion-and-recommendations.md
-      06-appendix.md
-
-    sources/
-      case/
-        connection.yaml
-
-    data/
-      raw/
-      case.duckdb
-      load.sql
-
-    README.md
+1. `add-files` (raw file registration)
+2. `normalize` (CSV staging + SQL-first normalization)
+3. `build-db` (downstream views)
+4. `npm run sources` (optional refresh)
 
 ---
 
 # Design Philosophy
 
 - One case = one Evidence project
-- Reproducible: data/load.sql is copied per case
-- Portable: copy the entire folder and it runs
-- Evolvable: loader logic can change without breaking historical cases
-
----
-
-# Current Scope (v1)
-
-Included:
-- Case scaffolding
-- Evidence template bootstrap
-- Page structure generation
-- DuckDB source creation
-- Per-case loader snapshot
-
-Not yet implemented:
-- CSV intake automation
-- Vendor detection (Qlue / TRM / manual)
-- Database build automation
-- Backend API endpoints
-- Multi-case hosting architecture
+- Reproducible normalization and transforms via SQL files
+- DuckDB-first pipeline
+- Clear separation between raw intake, normalization, and build
