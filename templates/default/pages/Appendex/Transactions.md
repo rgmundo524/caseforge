@@ -50,6 +50,154 @@ order by ts;
   <Column id=stolen_amount_native title="Stolen Value" />
 </DataTable>
 
+## Victim Address Transactions
+
+This table shows all transactions where either side is labeled as a victim address (`VA` variants).
+
+```sql victim_address_transactions_table
+select
+  time,
+  tx_label as transfer_label,
+  tx as transaction,
+  source_label as source_address_label,
+  source_address as source_address_hash,
+  destination_label as recipient_address_label,
+  destination_address as recipient_address_hash,
+  value as crypto_value,
+  asset as crypto_asset,
+  usd
+from normalized_combined_transactions
+where
+  regexp_matches(lower(trim(coalesce(source_label, ''))), '^va(\\b|\\s|#|-|$)')
+  or regexp_matches(lower(trim(coalesce(destination_label, ''))), '^va(\\b|\\s|#|-|$)')
+  or lower(trim(coalesce(source_label, ''))) like '%victim address%'
+  or lower(trim(coalesce(destination_label, ''))) like '%victim address%'
+order by time asc;
+```
+
+<DataTable data={victim_address_transactions_table} title="Victim Address Transactions" search download rows=50 rowNumbers rowLines rowShading>
+  <Column id=time title="Date/Time" />
+  <Column id=transfer_label title="Transaction Label" />
+  <Column id=transaction title="Transaction Hash" />
+  <Column id=source_address_label title="Sender Label" />
+  <Column id=source_address_hash title="Sender Address" />
+  <Column id=recipient_address_label title="Recipient Label" />
+  <Column id=recipient_address_hash title="Recipient Address" />
+  <Column id=crypto_value title="Value" />
+  <Column id=crypto_asset title="Asset" />
+  <Column id=usd title="USD Value" fmt=usd />
+</DataTable>
+
+## Service Deposit Address Transactions
+
+This table shows all transactions where either side is labeled as a service deposit address (`Service DA` variants).
+
+```sql service_deposit_address_transactions_table
+select
+  time,
+  tx_label as transfer_label,
+  tx as transaction,
+  source_label as source_address_label,
+  source_address as source_address_hash,
+  destination_label as recipient_address_label,
+  destination_address as recipient_address_hash,
+  value as crypto_value,
+  asset as crypto_asset,
+  usd
+from normalized_combined_transactions
+where
+  regexp_matches(lower(trim(coalesce(source_label, ''))), '^service\\s+da(\\b|\\s|-|$)')
+  or regexp_matches(lower(trim(coalesce(destination_label, ''))), '^service\\s+da(\\b|\\s|-|$)')
+order by time asc;
+```
+
+<DataTable data={service_deposit_address_transactions_table} title="Service Deposit Address Transactions" search download rows=50 rowNumbers rowLines rowShading>
+  <Column id=time title="Date/Time" />
+  <Column id=transfer_label title="Transaction Label" />
+  <Column id=transaction title="Transaction Hash" />
+  <Column id=source_address_label title="Sender Label" />
+  <Column id=source_address_hash title="Sender Address" />
+  <Column id=recipient_address_label title="Recipient Label" />
+  <Column id=recipient_address_hash title="Recipient Address" />
+  <Column id=crypto_value title="Value" />
+  <Column id=crypto_asset title="Asset" />
+  <Column id=usd title="USD Value" fmt=usd />
+</DataTable>
+
+## Theft Address Transactions
+
+This table shows all transactions where either side is labeled as a theft address (`TA` variants).
+
+```sql theft_address_transactions_table
+select
+  time,
+  tx_label as transfer_label,
+  tx as transaction,
+  source_label as source_address_label,
+  source_address as source_address_hash,
+  destination_label as recipient_address_label,
+  destination_address as recipient_address_hash,
+  value as crypto_value,
+  asset as crypto_asset,
+  usd
+from normalized_combined_transactions
+where
+  regexp_matches(lower(trim(coalesce(source_label, ''))), '^ta(\\b|\\s|#|-|$)')
+  or regexp_matches(lower(trim(coalesce(destination_label, ''))), '^ta(\\b|\\s|#|-|$)')
+order by time asc;
+```
+
+<DataTable data={theft_address_transactions_table} title="Theft Address Transactions" search download rows=50 rowNumbers rowLines rowShading>
+  <Column id=time title="Date/Time" />
+  <Column id=transfer_label title="Transaction Label" />
+  <Column id=transaction title="Transaction Hash" />
+  <Column id=source_address_label title="Sender Label" />
+  <Column id=source_address_hash title="Sender Address" />
+  <Column id=recipient_address_label title="Recipient Label" />
+  <Column id=recipient_address_hash title="Recipient Address" />
+  <Column id=crypto_value title="Value" />
+  <Column id=crypto_asset title="Asset" />
+  <Column id=usd title="USD Value" fmt=usd />
+</DataTable>
+
+## Cross-Chain Transactions
+
+This table shows all transactions tagged as service cross-chain activity (`Service CXC` variants), plus explicit cross-chain transaction labels.
+
+```sql crosschain_transactions_table
+select
+  time,
+  tx_label as transfer_label,
+  tx as transaction,
+  source_label as source_address_label,
+  source_address as source_address_hash,
+  destination_label as recipient_address_label,
+  destination_address as recipient_address_hash,
+  value as crypto_value,
+  asset as crypto_asset,
+  usd
+from normalized_combined_transactions
+where
+  regexp_matches(lower(trim(coalesce(source_label, ''))), '^service\\s+cxc(\\b|\\s|-|$)')
+  or regexp_matches(lower(trim(coalesce(destination_label, ''))), '^service\\s+cxc(\\b|\\s|-|$)')
+  or lower(trim(coalesce(tx_label, ''))) like '%cross-chain%'
+  or regexp_matches(lower(trim(coalesce(tx_label, ''))), '(^|\\s)cxc(\\s|$)')
+order by time asc;
+```
+
+<DataTable data={crosschain_transactions_table} title="Cross-Chain Transactions" search download rows=50 rowNumbers rowLines rowShading>
+  <Column id=time title="Date/Time" />
+  <Column id=transfer_label title="Transaction Label" />
+  <Column id=transaction title="Transaction Hash" />
+  <Column id=source_address_label title="Sender Label" />
+  <Column id=source_address_hash title="Sender Address" />
+  <Column id=recipient_address_label title="Recipient Label" />
+  <Column id=recipient_address_hash title="Recipient Address" />
+  <Column id=crypto_value title="Value" />
+  <Column id=crypto_asset title="Asset" />
+  <Column id=usd title="USD Value" fmt=usd />
+</DataTable>
+
 ## Transfers by Service
 
 This table aggregates transfers to labeled deposit addresses by service and asset,
@@ -136,4 +284,3 @@ order by value desc;
     ]
   }
 }/>
-
