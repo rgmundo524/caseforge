@@ -55,23 +55,45 @@ order by ts;
 This table shows all transactions where either side is labeled as a victim address (`VA` variants).
 
 ```sql victim_address_transactions_table
+with t as (
+  select
+    ts as time,
+    transfer_label,
+    tx_hash as transaction,
+    from_label as source_address_label,
+    from_address as source_address_hash,
+    to_label as recipient_address_label,
+    to_address as recipient_address_hash,
+    amount_native as crypto_value,
+    asset as crypto_asset,
+    amount_usd as usd,
+    lower(trim(replace(coalesce(from_label, ''), '"', ''))) as from_label_clean,
+    lower(trim(replace(coalesce(to_label, ''), '"', ''))) as to_label_clean,
+    lower(trim(replace(coalesce(address_label, ''), '"', ''))) as address_label_clean
+  from "case".transactions
+)
 select
   time,
-  tx_label as transfer_label,
-  tx as transaction,
-  source_label as source_address_label,
-  source_address as source_address_hash,
-  destination_label as recipient_address_label,
-  destination_address as recipient_address_hash,
-  value as crypto_value,
-  asset as crypto_asset,
+  transfer_label,
+  transaction,
+  source_address_label,
+  source_address_hash,
+  recipient_address_label,
+  recipient_address_hash,
+  crypto_value,
+  crypto_asset,
   usd
-from normalized_combined_transactions
+from t
 where
-  regexp_matches(lower(trim(coalesce(source_label, ''))), '^va(\\b|\\s|#|-|$)')
-  or regexp_matches(lower(trim(coalesce(destination_label, ''))), '^va(\\b|\\s|#|-|$)')
-  or lower(trim(coalesce(source_label, ''))) like '%victim address%'
-  or lower(trim(coalesce(destination_label, ''))) like '%victim address%'
+  from_label_clean like 'va %'
+  or from_label_clean like 'va#%'
+  or from_label_clean like '%victim address%'
+  or to_label_clean like 'va %'
+  or to_label_clean like 'va#%'
+  or to_label_clean like '%victim address%'
+  or address_label_clean like 'va %'
+  or address_label_clean like 'va#%'
+  or address_label_clean like '%victim address%'
 order by time asc;
 ```
 
@@ -93,21 +115,46 @@ order by time asc;
 This table shows all transactions where either side is labeled as a service deposit address (`Service DA` variants).
 
 ```sql service_deposit_address_transactions_table
+with t as (
+  select
+    ts as time,
+    transfer_label,
+    tx_hash as transaction,
+    from_label as source_address_label,
+    from_address as source_address_hash,
+    to_label as recipient_address_label,
+    to_address as recipient_address_hash,
+    amount_native as crypto_value,
+    asset as crypto_asset,
+    amount_usd as usd,
+    lower(trim(replace(coalesce(from_label, ''), '"', ''))) as from_label_clean,
+    lower(trim(replace(coalesce(to_label, ''), '"', ''))) as to_label_clean,
+    lower(trim(replace(coalesce(address_label, ''), '"', ''))) as address_label_clean,
+    lower(trim(replace(coalesce(address_entities, ''), '"', ''))) as address_entities_clean,
+    lower(trim(replace(coalesce(address_flags, ''), '"', ''))) as address_flags_clean
+  from "case".transactions
+)
 select
   time,
-  tx_label as transfer_label,
-  tx as transaction,
-  source_label as source_address_label,
-  source_address as source_address_hash,
-  destination_label as recipient_address_label,
-  destination_address as recipient_address_hash,
-  value as crypto_value,
-  asset as crypto_asset,
+  transfer_label,
+  transaction,
+  source_address_label,
+  source_address_hash,
+  recipient_address_label,
+  recipient_address_hash,
+  crypto_value,
+  crypto_asset,
   usd
-from normalized_combined_transactions
+from t
 where
-  regexp_matches(lower(trim(coalesce(source_label, ''))), '^service\\s+da(\\b|\\s|-|$)')
-  or regexp_matches(lower(trim(coalesce(destination_label, ''))), '^service\\s+da(\\b|\\s|-|$)')
+  from_label_clean like '% da'
+  or from_label_clean like '%deposit address%'
+  or to_label_clean like '% da'
+  or to_label_clean like '%deposit address%'
+  or address_label_clean like '% da'
+  or address_label_clean like '%deposit address%'
+  or address_entities_clean like '%deposit%'
+  or address_flags_clean like '%deposit%'
 order by time asc;
 ```
 
@@ -129,21 +176,45 @@ order by time asc;
 This table shows all transactions where either side is labeled as a theft address (`TA` variants).
 
 ```sql theft_address_transactions_table
+with t as (
+  select
+    ts as time,
+    transfer_label,
+    tx_hash as transaction,
+    from_label as source_address_label,
+    from_address as source_address_hash,
+    to_label as recipient_address_label,
+    to_address as recipient_address_hash,
+    amount_native as crypto_value,
+    asset as crypto_asset,
+    amount_usd as usd,
+    lower(trim(replace(coalesce(from_label, ''), '"', ''))) as from_label_clean,
+    lower(trim(replace(coalesce(to_label, ''), '"', ''))) as to_label_clean,
+    lower(trim(replace(coalesce(address_label, ''), '"', ''))) as address_label_clean
+  from "case".transactions
+)
 select
   time,
-  tx_label as transfer_label,
-  tx as transaction,
-  source_label as source_address_label,
-  source_address as source_address_hash,
-  destination_label as recipient_address_label,
-  destination_address as recipient_address_hash,
-  value as crypto_value,
-  asset as crypto_asset,
+  transfer_label,
+  transaction,
+  source_address_label,
+  source_address_hash,
+  recipient_address_label,
+  recipient_address_hash,
+  crypto_value,
+  crypto_asset,
   usd
-from normalized_combined_transactions
+from t
 where
-  regexp_matches(lower(trim(coalesce(source_label, ''))), '^ta(\\b|\\s|#|-|$)')
-  or regexp_matches(lower(trim(coalesce(destination_label, ''))), '^ta(\\b|\\s|#|-|$)')
+  from_label_clean like 'ta %'
+  or from_label_clean like 'ta#%'
+  or from_label_clean like '%theft address%'
+  or to_label_clean like 'ta %'
+  or to_label_clean like 'ta#%'
+  or to_label_clean like '%theft address%'
+  or address_label_clean like 'ta %'
+  or address_label_clean like 'ta#%'
+  or address_label_clean like '%theft address%'
 order by time asc;
 ```
 
@@ -165,23 +236,55 @@ order by time asc;
 This table shows all transactions tagged as service cross-chain activity (`Service CXC` variants), plus explicit cross-chain transaction labels.
 
 ```sql crosschain_transactions_table
+with t as (
+  select
+    ts as time,
+    transfer_label,
+    tx_hash as transaction,
+    from_label as source_address_label,
+    from_address as source_address_hash,
+    to_label as recipient_address_label,
+    to_address as recipient_address_hash,
+    amount_native as crypto_value,
+    asset as crypto_asset,
+    amount_usd as usd,
+    lower(trim(replace(coalesce(from_label, ''), '"', ''))) as from_label_clean,
+    lower(trim(replace(coalesce(to_label, ''), '"', ''))) as to_label_clean,
+    lower(trim(replace(coalesce(address_label, ''), '"', ''))) as address_label_clean,
+    lower(trim(replace(coalesce(address_entities, ''), '"', ''))) as address_entities_clean,
+    lower(trim(replace(coalesce(address_flags, ''), '"', ''))) as address_flags_clean,
+    lower(trim(replace(coalesce(transfer_label, ''), '"', ''))) as transfer_label_clean
+  from "case".transactions
+)
 select
   time,
-  tx_label as transfer_label,
-  tx as transaction,
-  source_label as source_address_label,
-  source_address as source_address_hash,
-  destination_label as recipient_address_label,
-  destination_address as recipient_address_hash,
-  value as crypto_value,
-  asset as crypto_asset,
+  transfer_label,
+  transaction,
+  source_address_label,
+  source_address_hash,
+  recipient_address_label,
+  recipient_address_hash,
+  crypto_value,
+  crypto_asset,
   usd
-from normalized_combined_transactions
+from t
 where
-  regexp_matches(lower(trim(coalesce(source_label, ''))), '^service\\s+cxc(\\b|\\s|-|$)')
-  or regexp_matches(lower(trim(coalesce(destination_label, ''))), '^service\\s+cxc(\\b|\\s|-|$)')
-  or lower(trim(coalesce(tx_label, ''))) like '%cross-chain%'
-  or regexp_matches(lower(trim(coalesce(tx_label, ''))), '(^|\\s)cxc(\\s|$)')
+  from_label_clean like '%cxc%'
+  or to_label_clean like '%cxc%'
+  or address_label_clean like '%cxc%'
+  or transfer_label_clean like '%cxc%'
+  or transfer_label_clean like '%cross-chain%'
+  or transfer_label_clean like '%cross chain%'
+  or from_label_clean like '%bridge%'
+  or to_label_clean like '%bridge%'
+  or address_entities_clean like '%cxc%'
+  or address_entities_clean like '%cross-chain%'
+  or address_entities_clean like '%cross chain%'
+  or address_entities_clean like '%bridge%'
+  or address_flags_clean like '%cxc%'
+  or address_flags_clean like '%cross-chain%'
+  or address_flags_clean like '%cross chain%'
+  or address_flags_clean like '%bridge%'
 order by time asc;
 ```
 
