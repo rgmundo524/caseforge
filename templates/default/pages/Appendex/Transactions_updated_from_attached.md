@@ -5,55 +5,37 @@ sidebar_position: 1
 
 # Appendix
 
-## Related Transactions Details
-The following is a complete list of blockchain transactions involved in this investigation.
+## Transfers by Blockchain
 
-<!-- Generates a list of blockchains involved in the investigation and adds a combined "all" option for unfiltered selection -->
+Select a blockchain to filter the transfers table.
+
 ```sql chains
-select 'all' as value, 'All' as label
+select 'all' as chain_name
 union all
-select distinct
-  lower(chain) as value,
-  initcap(chain) as label
+select distinct chain as chain_name
 from "case".transactions
 where chain is not null
-order by label;
+order by 1;
 ```
 
-<!-- Renders a drop down menu referencing the above sql query results to filter for specific blockchains, defaulting to "All"-->
 <Dropdown
   data={chains}
   name=chain_filter
-  value=value
-  label=label
+  value=chain_name
   title="Chain"
   defaultValue="all"
 />
 
-<!-- SQL query to filter results transaction by blockchain -->
 ```sql transfers_by_chain
-select 
-	initcap(chain) as chain, 
-	tx_hash, 
-	transfer_label, 
-	ts, 
-	from_label, 
-	from_address, 
-	to_label, 
-	to_address, 
-	amount_native, 
-	asset, 
-	amount_usd, 
-	stolen_amount_native 
+select *
 from "case".transactions
 where
   '${inputs.chain_filter.value}' = 'all'
-  or trim(lower(chain)) = '${inputs.chain_filter.value}'
+  or lower(chain) = lower('${inputs.chain_filter.value}')
 order by ts;
 ```
 
-<!-- Renders a table to display the filter/unfiltered transactions -->
-<DataTable data={transfers_by_chain} title="Transactions by Blockchain" subtitle="Filtered by Chain" search download rows=20 rowNumbers rowLines rowShading>
+<DataTable data={transfers_by_chain} title="Transactions by Blockchain" subtitle="Filtered by Chain" search download rows=50 rowNumbers rowLines rowShading>
   <column id=chain title="Blockchain" />
   <Column id=tx_hash title="Transaction Hash" />
   <Column id=transfer_label title="Transaction Label" />
@@ -68,13 +50,69 @@ order by ts;
   <Column id=stolen_amount_native title="Stolen Value" />
 </DataTable>
 
+## Victim Address Transactions
+
+This table shows all transactions where either side is labeled as a victim address (`VA` variants).
+
+```sql victim_address_transactions_table
+with t as (
+  select
+    ts as time,
+    transfer_label,
+    tx_hash as transaction,
+    from_label as source_address_label,
+    from_address as source_address_hash,
+    to_label as recipient_address_label,
+    to_address as recipient_address_hash,
+    amount_native as crypto_value,
+    asset as crypto_asset,
+    amount_usd as usd,
+    lower(trim(replace(coalesce(from_label, ''), '"', ''))) as from_label_clean,
+    lower(trim(replace(coalesce(to_label, ''), '"', ''))) as to_label_clean,
+    lower(trim(replace(coalesce(address_label, ''), '"', ''))) as address_label_clean
+  from "case".transactions
+)
+select
+  time,
+  transfer_label,
+  transaction,
+  source_address_label,
+  source_address_hash,
+  recipient_address_label,
+  recipient_address_hash,
+  crypto_value,
+  crypto_asset,
+  usd
+from t
+where
+  from_label_clean like 'va %'
+  or from_label_clean like 'va#%'
+  or from_label_clean like '%victim address%'
+  or to_label_clean like 'va %'
+  or to_label_clean like 'va#%'
+  or to_label_clean like '%victim address%'
+  or address_label_clean like 'va %'
+  or address_label_clean like 'va#%'
+  or address_label_clean like '%victim address%'
+order by time asc;
+```
+
+<DataTable data={victim_address_transactions_table} title="Victim Address Transactions" search download rows=50 rowNumbers rowLines rowShading>
+  <Column id=time title="Date/Time" />
+  <Column id=transfer_label title="Transaction Label" />
+  <Column id=transaction title="Transaction Hash" />
+  <Column id=source_address_label title="Sender Label" />
+  <Column id=source_address_hash title="Sender Address" />
+  <Column id=recipient_address_label title="Recipient Label" />
+  <Column id=recipient_address_hash title="Recipient Address" />
+  <Column id=crypto_value title="Value" />
+  <Column id=crypto_asset title="Asset" />
+  <Column id=usd title="USD Value" fmt=usd />
+</DataTable>
+
 ## Service Deposit Address Transactions
 
-This table shows all transactions where either side is labeled as a service deposit address (`Service DA` variants).
-
-```
-
-```
+This table shows transactions where the recipient address is labeled as a service deposit address (`DA` variants).
 
 ```sql service_deposit_address_transactions_table
 with t as (
@@ -109,19 +147,20 @@ where
   or to_label_clean like '%deposit address%'
 order by time asc;
 ```
-<DataTable data={service_deposit_address_transactions_table} title="Service Deposit Address Transactions" search download rows=20 rowNumbers rowLines rowShading>
-  <Column id=Time title="Date/Time" />
-  <Column id="Tx Label" title="Transaction Label" />
-  <Column id="Transaction" title="Transaction Hash" />
-  <Column id="Source Label" title="Sender Label" />
-  <Column id="Source Address" title="Sender Address" />
-  <Column id="Recipient Label" title="Recipient Label" />
-  <Column id="Recipient Address" title="Recipient Address" />
-  <Column id=Value title="Value" />
-  <Column id=Asset title="Asset" />
-  <Column id=USD title="USD Value" fmt=usd />
+
+<DataTable data={service_deposit_address_transactions_table} title="Service Deposit Address Transactions" search download rows=50 rowNumbers rowLines rowShading>
+  <Column id=time title="Date/Time" />
+  <Column id=transfer_label title="Transaction Label" />
+  <Column id=transaction title="Transaction Hash" />
+  <Column id=source_address_label title="Sender Label" />
+  <Column id=source_address_hash title="Sender Address" />
+  <Column id=recipient_address_label title="Recipient Label" />
+  <Column id=recipient_address_hash title="Recipient Address" />
+  <Column id=crypto_value title="Value" />
+  <Column id=crypto_asset title="Asset" />
+  <Column id=usd title="USD Value" fmt=usd />
 </DataTable>
-<!--
+
 ## Theft Address Transactions
 
 This table shows all transactions where either side is labeled as a theft address (`TA` variants).
@@ -168,8 +207,7 @@ where
   or address_label_clean like '%theft address%'
 order by time asc;
 ```
-<!-- Transactions are not being displayed -->
-<!--
+
 <DataTable data={theft_address_transactions_table} title="Theft Address Transactions" search download rows=50 rowNumbers rowLines rowShading>
   <Column id=time title="Date/Time" />
   <Column id=transfer_label title="Transaction Label" />
@@ -182,12 +220,11 @@ order by time asc;
   <Column id=crypto_asset title="Asset" />
   <Column id=usd title="USD Value" fmt=usd />
 </DataTable>
--->
+
 ## Cross-Chain Transactions
 
 This table shows all transactions tagged as service cross-chain activity (`Service CXC` variants), plus explicit cross-chain transaction labels.
 
-<!-- Retrieves transactions identified as cross-chain based solely on transfer_label values, including labels containing "CxC", "cross-chain", or "cross chain" -->
 ```sql crosschain_transactions_table
 with t as (
   select
@@ -201,6 +238,9 @@ with t as (
     amount_native as crypto_value,
     asset as crypto_asset,
     amount_usd as usd,
+    lower(trim(replace(coalesce(from_label, ''), '"', ''))) as from_label_clean,
+    lower(trim(replace(coalesce(to_label, ''), '"', ''))) as to_label_clean,
+    lower(trim(replace(coalesce(address_label, ''), '"', ''))) as address_label_clean,
     lower(trim(replace(coalesce(transfer_label, ''), '"', ''))) as transfer_label_clean
   from "case".transactions
 )
@@ -217,9 +257,15 @@ select
   usd
 from t
 where
-  transfer_label_clean like '%cxc%'
+  from_label_clean like '%cxc%'
+  or to_label_clean like '%cxc%'
+  or address_label_clean like '%cxc%'
+  or transfer_label_clean like '%cxc%'
   or transfer_label_clean like '%cross-chain%'
   or transfer_label_clean like '%cross chain%'
+  or from_label_clean like '%bridge%'
+  or to_label_clean like '%bridge%'
+  or address_label_clean like '%bridge%'
 order by time asc;
 ```
 
