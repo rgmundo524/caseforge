@@ -2,7 +2,16 @@ CREATE OR REPLACE TEMP VIEW norm_{{FILE_ID}} AS
 WITH base AS (
     SELECT
         nullif(trim(cast("Transaction Hash" AS VARCHAR)), '') AS tx,
-        try_cast(nullif(trim(cast("Time" AS VARCHAR)), '') AS TIMESTAMP) AS time,
+        coalesce(
+            try_strptime(
+                replace(nullif(trim(cast("Time" AS VARCHAR)), ''), ' GMT+0', ' +00'),
+                '%B %-d %Y %-I:%M:%S %p %z'
+            ),
+            try_strptime(
+                replace(nullif(trim(cast("Time" AS VARCHAR)), ''), ' GMT+0', ' +00'),
+                '%B %d %Y %-I:%M:%S %p %z'
+            )
+        ) AS time,
         nullif(trim(cast("Transaction Label" AS VARCHAR)), '') AS tx_label,
         CASE
             WHEN lower(trim(cast("Direction" AS VARCHAR))) IN ('in', 'input', 'incoming') THEN 'in'

@@ -4,7 +4,16 @@ SELECT DISTINCT
     'account' AS tx_model,
     '{{SOURCE_FILE}}' AS source_file,
     '{{BLOCKCHAIN}}' AS blockchain,
-    try_cast(nullif(trim(cast("Time" AS VARCHAR)), '') AS TIMESTAMP) AS time,
+    coalesce(
+        try_strptime(
+            replace(nullif(trim(cast("Time" AS VARCHAR)), ''), ' GMT+0', ' +00'),
+            '%B %-d %Y %-I:%M:%S %p %z'
+        ),
+        try_strptime(
+            replace(nullif(trim(cast("Time" AS VARCHAR)), ''), ' GMT+0', ' +00'),
+            '%B %d %Y %-I:%M:%S %p %z'
+        )
+    ) AS time,
     nullif(trim(cast("Transaction" AS VARCHAR)), '') AS tx,
     nullif(trim(cast("Transfer Label" AS VARCHAR)), '') AS tx_label,
     nullif(trim(cast("Source Address Hash" AS VARCHAR)), '') AS source_address,
