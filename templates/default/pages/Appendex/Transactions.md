@@ -8,7 +8,6 @@ sidebar_position: 1
 ## Related Transactions Details
 The following is a complete list of blockchain transactions involved in this investigation.
 
-<!-- Generates a list of blockchains involved in the investigation and adds a combined "all" option for unfiltered selection -->
 ```sql chains
 select 'all' as value, 'All' as label
 union all
@@ -20,7 +19,6 @@ where chain is not null
 order by label;
 ```
 
-<!-- Renders a drop down menu referencing the above sql query results to filter for specific blockchains, defaulting to "All"-->
 <Dropdown
   data={chains}
   name=chain_filter
@@ -30,33 +28,89 @@ order by label;
   defaultValue="all"
 />
 
-<!-- SQL query to filter results transaction by blockchain -->
 ```sql transfers_by_chain
-select 
-  upper(substr(coalesce(chain, ''), 1, 1)) || lower(substr(coalesce(chain, ''), 2)) as chain,
-  tx_hash, 
-  transfer_label, 
-  ts, 
-  from_label, 
-  from_address, 
-  to_label, 
-  to_address, 
-  amount_native, 
-  asset, 
-  amount_usd, 
-  stolen_amount_native 
-from "case".transactions
-where
-  '${inputs.chain_filter.value}' = 'all'
-  or trim(lower(chain)) = '${inputs.chain_filter.value}'
+with parsed as (
+  select
+    upper(substr(coalesce(chain, ''), 1, 1)) || lower(substr(coalesce(chain, ''), 2)) as chain,
+    tx_hash,
+    transfer_label,
+    ts,
+    from_label,
+    from_address,
+    to_label,
+    to_address,
+    amount_native,
+    asset,
+    amount_usd,
+    stolen_amount_native,
+    nullif(trim(regexp_extract(trim(coalesce(transfer_label, '')), '^\[([^\]]+)\]', 1)), '') as tx_actions,
+    nullif(
+      trim(
+        regexp_replace(
+          trim(regexp_replace(trim(coalesce(transfer_label, '')), '^\[[^\]]+\]\s*', '')),
+          '\s*\([^)]*\)\s*$',
+          ''
+        )
+      ),
+      ''
+    ) as tx_counterparty,
+    try_cast(
+      replace(
+        regexp_extract(
+          trim(coalesce(transfer_label, '')),
+          '\(([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))\s+[A-Za-z0-9._-]+\)',
+          1
+        ),
+        ',',
+        ''
+      ) as double
+    ) as tx_traced_value_native,
+    upper(
+      nullif(
+        trim(
+          regexp_extract(
+            trim(coalesce(transfer_label, '')),
+            '\((?:[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))\s+([A-Za-z0-9._-]+)\)',
+            1
+          )
+        ),
+        ''
+      )
+    ) as tx_traced_value_asset
+  from "case".transactions
+  where
+    '${inputs.chain_filter.value}' = 'all'
+    or trim(lower(chain)) = '${inputs.chain_filter.value}'
+)
+select
+  chain,
+  tx_hash,
+  transfer_label,
+  tx_actions,
+  tx_counterparty,
+  coalesce(tx_traced_value_native, stolen_amount_native) as tx_traced_value_native,
+  coalesce(tx_traced_value_asset, asset) as tx_traced_value_asset,
+  ts,
+  from_label,
+  from_address,
+  to_label,
+  to_address,
+  amount_native,
+  asset,
+  amount_usd,
+  stolen_amount_native
+from parsed
 order by ts;
 ```
 
-<!-- Renders a table to display the filter/unfiltered transactions -->
 <DataTable data={transfers_by_chain} title="Transactions by Blockchain" subtitle="Filtered by Chain" search download rows=20 rowNumbers rowLines rowShading>
   <Column id=chain title="Blockchain" />
   <Column id=tx_hash title="Transaction Hash" />
   <Column id=transfer_label title="Transaction Label" />
+  <Column id=tx_actions title="Actions" />
+  <Column id=tx_counterparty title="Counterparty" />
+  <Column id=tx_traced_value_native title="Traced Value" />
+  <Column id=tx_traced_value_asset title="Traced Asset" />
   <Column id=ts title="Date/Time" />
   <Column id=from_label title="Sender" />
   <Column id=from_address title="Sender Address" />
@@ -70,52 +124,46 @@ order by ts;
 
 ## Service Deposit Address Transactions
 
-This table shows transactions where the recipient label indicates a service deposit address. Use the recipient service dropdown to narrow the results to a single service.
+This table shows transactions where the recipient address label contains the `DA` type code. Use the recipient service dropdown to narrow the results to a single service.
 
-<!-- Builds a dropdown list of recipient services found in service deposit address transactions for the selected chain and adds an "All" option for unfiltered results -->
 ```sql recipient_services
-with t as (
+with parsed as (
   select
     chain,
-    trim(replace(coalesce(to_label, ''), '"', '')) as to_label_raw,
-    lower(trim(replace(coalesce(to_label, ''), '"', ''))) as to_label_clean,
-    trim(regexp_replace(trim(replace(coalesce(to_label, ''), '"', '')), '\s*\([^)]*\)\s*$', '')) as to_label_suffix_base,
-    lower(trim(regexp_replace(trim(replace(coalesce(to_label, ''), '"', '')), '\s*\([^)]*\)\s*$', ''))) as to_label_suffix_clean
+    nullif(trim(regexp_extract(trim(coalesce(to_label, '')), '^\[([^\]]+)\]', 1)), '') as to_types,
+    nullif(
+      trim(
+        regexp_replace(
+          trim(regexp_replace(trim(coalesce(to_label, '')), '^\[[^\]]+\]\s*', '')),
+          '\s*\([^)]*\)\s*$',
+          ''
+        )
+      ),
+      ''
+    ) as to_counterparty
   from "case".transactions
 ),
 services as (
   select
-    lower(
-      case
-        when to_label_clean like 'deposit address (%' then trim(split_part(split_part(to_label_raw, '(', 2), ')', 1))
-        when to_label_suffix_clean like '%deposit address' then trim(left(to_label_suffix_base, length(to_label_suffix_base) - length('Deposit Address')))
-        when to_label_suffix_clean like '% da' then trim(left(to_label_suffix_base, length(to_label_suffix_base) - 3))
-        else ''
-      end
-    ) as value,
-    case
-      when to_label_clean like 'deposit address (%' then trim(split_part(split_part(to_label_raw, '(', 2), ')', 1))
-      when to_label_suffix_clean like '%deposit address' then trim(left(to_label_suffix_base, length(to_label_suffix_base) - length('Deposit Address')))
-      when to_label_suffix_clean like '% da' then trim(left(to_label_suffix_base, length(to_label_suffix_base) - 3))
-      else ''
-    end as label
-  from t
+    lower(to_counterparty) as value,
+    min(to_counterparty) as label
+  from parsed
   where
-    '${inputs.chain_filter.value}' = 'all'
-    or trim(lower(chain)) = '${inputs.chain_filter.value}'
+    regexp_matches(coalesce(to_types, ''), '(^|[/:\\])DA($|[/:\\])', 'i')
+    and coalesce(to_counterparty, '') <> ''
+    and (
+      '${inputs.chain_filter.value}' = 'all'
+      or trim(lower(chain)) = '${inputs.chain_filter.value}'
+    )
+  group by lower(to_counterparty)
 )
 select 'all' as value, 'All' as label
 union all
-select
-  value,
-  min(label) as label
+select value, label
 from services
-where value <> '' and label <> ''
-group by value
 order by label;
 ```
 
-<!-- Creates a dropdown filter for recipient services using the extracted service names, defaulting to "All" -->
 <Dropdown
   data={recipient_services}
   name=service_filter
@@ -125,9 +173,8 @@ order by label;
   defaultValue="all"
 />
 
-<!-- Retrieves service deposit address transactions and filters them by the selected chain and recipient service -->
 ```sql service_deposit_address_transactions_table
-with t as (
+with parsed as (
   select
     chain,
     ts as time,
@@ -140,34 +187,18 @@ with t as (
     amount_native as crypto_value,
     asset as crypto_asset,
     amount_usd as usd,
-    trim(replace(coalesce(to_label, ''), '"', '')) as to_label_raw,
-    lower(trim(replace(coalesce(to_label, ''), '"', ''))) as to_label_clean,
-    trim(regexp_replace(trim(replace(coalesce(to_label, ''), '"', '')), '\s*\([^)]*\)\s*$', '')) as to_label_suffix_base,
-    lower(trim(regexp_replace(trim(replace(coalesce(to_label, ''), '"', '')), '\s*\([^)]*\)\s*$', ''))) as to_label_suffix_clean
-  from "case".transactions
-),
-classified as (
-  select
-    chain,
-    time,
-    transfer_label,
-    transaction,
-    source_address_label,
-    source_address_hash,
-    recipient_address_label,
-    recipient_address_hash,
-    crypto_value,
-    crypto_asset,
-    usd,
-    lower(
-      case
-        when to_label_clean like 'deposit address (%' then trim(split_part(split_part(to_label_raw, '(', 2), ')', 1))
-        when to_label_suffix_clean like '%deposit address' then trim(left(to_label_suffix_base, length(to_label_suffix_base) - length('Deposit Address')))
-        when to_label_suffix_clean like '% da' then trim(left(to_label_suffix_base, length(to_label_suffix_base) - 3))
-        else ''
-      end
+    nullif(trim(regexp_extract(trim(coalesce(to_label, '')), '^\[([^\]]+)\]', 1)), '') as to_types,
+    nullif(
+      trim(
+        regexp_replace(
+          trim(regexp_replace(trim(coalesce(to_label, '')), '^\[[^\]]+\]\s*', '')),
+          '\s*\([^)]*\)\s*$',
+          ''
+        )
+      ),
+      ''
     ) as recipient_service
-  from t
+  from "case".transactions
 )
 select
   time,
@@ -180,19 +211,21 @@ select
   crypto_value,
   crypto_asset,
   usd
-from classified
+from parsed
 where
-  recipient_service <> ''
+  regexp_matches(coalesce(to_types, ''), '(^|[/:\\])DA($|[/:\\])', 'i')
+  and coalesce(recipient_service, '') <> ''
   and (
     '${inputs.chain_filter.value}' = 'all'
     or trim(lower(chain)) = '${inputs.chain_filter.value}'
   )
   and (
     '${inputs.service_filter.value}' = 'all'
-    or recipient_service = '${inputs.service_filter.value}'
+    or lower(recipient_service) = '${inputs.service_filter.value}'
   )
 order by time asc;
 ```
+
 <DataTable data={service_deposit_address_transactions_table} title="Service Deposit Address Transactions" subtitle="Filtered by Chain and Recipient Service" search download rows=20 rowNumbers rowLines rowShading>
   <Column id=time title="Date/Time" />
   <Column id=transfer_label title="Transaction Label" />
@@ -206,75 +239,12 @@ order by time asc;
   <Column id=usd title="USD Value" fmt=usd />
 </DataTable>
 
-<!--
-## Theft Address Transactions
-
-This table shows all transactions where either side is labeled as a theft address (`TA` variants).
-
-```sql theft_address_transactions_table
-with t as (
-  select
-    ts as time,
-    transfer_label,
-    tx_hash as transaction,
-    from_label as source_address_label,
-    from_address as source_address_hash,
-    to_label as recipient_address_label,
-    to_address as recipient_address_hash,
-    amount_native as crypto_value,
-    asset as crypto_asset,
-    amount_usd as usd,
-    lower(trim(replace(coalesce(from_label, ''), '"', ''))) as from_label_clean,
-    lower(trim(replace(coalesce(to_label, ''), '"', ''))) as to_label_clean,
-    lower(trim(replace(coalesce(address_label, ''), '"', ''))) as address_label_clean
-  from "case".transactions
-)
-select
-  time,
-  transfer_label,
-  transaction,
-  source_address_label,
-  source_address_hash,
-  recipient_address_label,
-  recipient_address_hash,
-  crypto_value,
-  crypto_asset,
-  usd
-from t
-where
-  from_label_clean like 'ta %'
-  or from_label_clean like 'ta#%'
-  or from_label_clean like '%theft address%'
-  or to_label_clean like 'ta %'
-  or to_label_clean like 'ta#%'
-  or to_label_clean like '%theft address%'
-  or address_label_clean like 'ta %'
-  or address_label_clean like 'ta#%'
-  or address_label_clean like '%theft address%'
-order by time asc;
-```
-<!-- Transactions are not being displayed -->
-<!--
-<DataTable data={theft_address_transactions_table} title="Theft Address Transactions" search download rows=50 rowNumbers rowLines rowShading>
-  <Column id=time title="Date/Time" />
-  <Column id=transfer_label title="Transaction Label" />
-  <Column id=transaction title="Transaction Hash" />
-  <Column id=source_address_label title="Sender Label" />
-  <Column id=source_address_hash title="Sender Address" />
-  <Column id=recipient_address_label title="Recipient Label" />
-  <Column id=recipient_address_hash title="Recipient Address" />
-  <Column id=crypto_value title="Value" />
-  <Column id=crypto_asset title="Asset" />
-  <Column id=usd title="USD Value" fmt=usd />
-</DataTable>
--->
 ## Cross-Chain Transactions
 
-This table shows all transactions tagged as service cross-chain activity (`Service CXC` variants), plus explicit cross-chain transaction labels.
+This table shows transactions whose transaction action block contains `CC`.
 
-<!-- Retrieves transactions identified as cross-chain based solely on transfer_label values, including labels containing "CxC", "cross-chain", or "cross chain" -->
 ```sql crosschain_transactions_table
-with t as (
+with parsed as (
   select
     ts as time,
     transfer_label,
@@ -286,7 +256,7 @@ with t as (
     amount_native as crypto_value,
     asset as crypto_asset,
     amount_usd as usd,
-    lower(trim(replace(coalesce(transfer_label, ''), '"', ''))) as transfer_label_clean
+    nullif(trim(regexp_extract(trim(coalesce(transfer_label, '')), '^\[([^\]]+)\]', 1)), '') as tx_actions
   from "case".transactions
 )
 select
@@ -300,11 +270,8 @@ select
   crypto_value,
   crypto_asset,
   usd
-from t
-where
-  transfer_label_clean like '%cxc%'
-  or transfer_label_clean like '%cross-chain%'
-  or transfer_label_clean like '%cross chain%'
+from parsed
+where regexp_matches(coalesce(tx_actions, ''), '(^|[/:\\])CC($|[/:\\])', 'i')
 order by time asc;
 ```
 
@@ -323,46 +290,45 @@ order by time asc;
 
 ## Transfers by Service
 
-This table aggregates transfers to labeled deposit addresses by service and asset,
-filtered by the same chain dropdown above.
+This table aggregates deposits to recipient labels that contain the `DA` type code.
 
 ```sql transfers_by_service
-with t as (
+with parsed as (
   select
     asset,
     amount_native,
     stolen_amount_native,
     amount_usd,
     stolen_amount_usd,
-    trim(replace(coalesce(to_label, ''), '"', '')) as to_label_raw,
-    lower(trim(replace(coalesce(to_label, ''), '"', ''))) as to_label_clean,
-    trim(regexp_replace(trim(replace(coalesce(to_label, ''), '"', '')), '\s*\([^)]*\)\s*$', '')) as to_label_suffix_base,
-    lower(trim(regexp_replace(trim(replace(coalesce(to_label, ''), '"', '')), '\s*\([^)]*\)\s*$', ''))) as to_label_suffix_clean
+    nullif(trim(regexp_extract(trim(coalesce(to_label, '')), '^\[([^\]]+)\]', 1)), '') as to_types,
+    nullif(
+      trim(
+        regexp_replace(
+          trim(regexp_replace(trim(coalesce(to_label, '')), '^\[[^\]]+\]\s*', '')),
+          '\s*\([^)]*\)\s*$',
+          ''
+        )
+      ),
+      ''
+    ) as to_counterparty
   from "case".transactions
   where
     '${inputs.chain_filter.value}' = 'all'
     or lower(chain) = lower('${inputs.chain_filter.value}')
-),
-deposits as (
-  select
-    case
-      when to_label_clean like 'deposit address (%' then trim(split_part(split_part(to_label_raw, '(', 2), ')', 1))
-      when to_label_suffix_clean like '%deposit address' then trim(left(to_label_suffix_base, length(to_label_suffix_base) - length('Deposit Address')))
-      when to_label_suffix_clean like '% da' then trim(left(to_label_suffix_base, length(to_label_suffix_base) - 3))
-      else null
-    end as service,
-    asset,
-    count(*) as tx_count,
-    sum(amount_native) as gross_amount_native,
-    sum(stolen_amount_native) as stolen_amount_native,
-    sum(amount_usd) as gross_amount_usd,
-    sum(stolen_amount_usd) as stolen_amount_usd
-  from t
-  group by 1,2
 )
-select *
-from deposits
-where service is not null and service <> ''
+select
+  to_counterparty as service,
+  asset,
+  count(*) as tx_count,
+  sum(amount_native) as gross_amount_native,
+  sum(stolen_amount_native) as stolen_amount_native,
+  sum(amount_usd) as gross_amount_usd,
+  sum(stolen_amount_usd) as stolen_amount_usd
+from parsed
+where
+  regexp_matches(coalesce(to_types, ''), '(^|[/:\\])DA($|[/:\\])', 'i')
+  and coalesce(to_counterparty, '') <> ''
+group by 1,2
 order by stolen_amount_usd desc nulls last, stolen_amount_native desc;
 ```
 
@@ -380,37 +346,36 @@ order by stolen_amount_usd desc nulls last, stolen_amount_native desc;
 
 ## Service Deposit Distribution (Donut)
 
-This donut chart shows the distribution of *stolen USD* deposits by service for the selected chain.
-If the selected chain is "all", it shows totals across all chains.
+This donut chart shows the distribution of stolen USD deposits by service for the selected chain.
 
 ```sql service_donut_data
-with t as (
+with parsed as (
   select
-    trim(replace(coalesce(to_label, ''), '"', '')) as to_label_raw,
-    lower(trim(replace(coalesce(to_label, ''), '"', ''))) as to_label_clean,
-    trim(regexp_replace(trim(replace(coalesce(to_label, ''), '"', '')), '\s*\([^)]*\)\s*$', '')) as to_label_suffix_base,
-    lower(trim(regexp_replace(trim(replace(coalesce(to_label, ''), '"', '')), '\s*\([^)]*\)\s*$', ''))) as to_label_suffix_clean,
+    nullif(trim(regexp_extract(trim(coalesce(to_label, '')), '^\[([^\]]+)\]', 1)), '') as to_types,
+    nullif(
+      trim(
+        regexp_replace(
+          trim(regexp_replace(trim(coalesce(to_label, '')), '^\[[^\]]+\]\s*', '')),
+          '\s*\([^)]*\)\s*$',
+          ''
+        )
+      ),
+      ''
+    ) as to_counterparty,
     stolen_amount_usd
   from "case".transactions
   where
     '${inputs.chain_filter.value}' = 'all'
     or lower(chain) = lower('${inputs.chain_filter.value}')
-),
-service_totals as (
-  select
-    case
-      when to_label_clean like 'deposit address (%' then trim(split_part(split_part(to_label_raw, '(', 2), ')', 1))
-      when to_label_suffix_clean like '%deposit address' then trim(left(to_label_suffix_base, length(to_label_suffix_base) - length('Deposit Address')))
-      when to_label_suffix_clean like '% da' then trim(left(to_label_suffix_base, length(to_label_suffix_base) - 3))
-      else null
-    end as name,
-    sum(stolen_amount_usd) as value
-  from t
-  group by 1
 )
-select *
-from service_totals
-where name is not null and name <> ''
+select
+  to_counterparty as name,
+  sum(stolen_amount_usd) as value
+from parsed
+where
+  regexp_matches(coalesce(to_types, ''), '(^|[/:\\])DA($|[/:\\])', 'i')
+  and coalesce(to_counterparty, '') <> ''
+group by 1
 order by value desc;
 ```
 

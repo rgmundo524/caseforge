@@ -30,51 +30,153 @@ WITH base AS (
     value AS amount_native,
     usd AS amount_usd,
     nullif(trim(regexp_replace(replace(coalesce(tx_label, ''), '"', ''), '\s+', ' ', 'g')), '') AS transfer_label,
-    source_file,
+    source_file
+  FROM normalized_combined_transactions
+),
+parsed AS (
+  SELECT
+    *,
+    trim(coalesce(transfer_label, '')) AS transfer_label_clean,
+    trim(coalesce(from_label, '')) AS from_label_clean,
+    trim(coalesce(to_label, '')) AS to_label_clean,
 
-    CASE
-      WHEN lower(coalesce(tx_label, '')) LIKE '%theft%' THEN 1
-      ELSE 0
-    END AS is_theft_tx,
+    NULLIF(trim(regexp_extract(trim(coalesce(transfer_label, '')), '^\[([^\]]+)\]', 1)), '') AS tx_actions,
+    NULLIF(trim(regexp_extract(trim(coalesce(from_label, '')), '^\[([^\]]+)\]', 1)), '') AS from_types,
+    NULLIF(trim(regexp_extract(trim(coalesce(to_label, '')), '^\[([^\]]+)\]', 1)), '') AS to_types,
+
+    NULLIF(
+      trim(
+        regexp_replace(
+          trim(regexp_replace(trim(coalesce(transfer_label, '')), '^\[[^\]]+\]\s*', '')),
+          '\s*\([^)]*\)\s*$',
+          ''
+        )
+      ),
+      ''
+    ) AS tx_counterparty,
+
+    NULLIF(
+      trim(
+        regexp_replace(
+          trim(regexp_replace(trim(coalesce(from_label, '')), '^\[[^\]]+\]\s*', '')),
+          '\s*\([^)]*\)\s*$',
+          ''
+        )
+      ),
+      ''
+    ) AS from_counterparty,
+
+    NULLIF(
+      trim(
+        regexp_replace(
+          trim(regexp_replace(trim(coalesce(to_label, '')), '^\[[^\]]+\]\s*', '')),
+          '\s*\([^)]*\)\s*$',
+          ''
+        )
+      ),
+      ''
+    ) AS to_counterparty,
 
     try_cast(
       replace(
         regexp_extract(
-          trim(regexp_replace(replace(coalesce(tx_label, ''), '"', ''), '\s+', ' ', 'g')),
-          '\(([-+]?(?:[0-9][0-9,]*(\.[0-9]+)?|\.[0-9]+))',
+          trim(coalesce(transfer_label, '')),
+          '\(([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))\s+[A-Za-z0-9._-]+\)',
           1
         ),
         ',',
         ''
       ) AS DOUBLE
-    ) AS parsed_paren_stolen_amount_native,
+    ) AS tx_traced_value_native,
+
+    upper(
+      NULLIF(
+        trim(
+          regexp_extract(
+            trim(coalesce(transfer_label, '')),
+            '\((?:[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))\s+([A-Za-z0-9._-]+)\)',
+            1
+          )
+        ),
+        ''
+      )
+    ) AS tx_traced_value_asset,
 
     try_cast(
       replace(
         regexp_extract(
-          trim(regexp_replace(replace(coalesce(tx_label, ''), '"', ''), '\s+', ' ', 'g')),
-          '^[-+]?(?:[0-9][0-9,]*(\.[0-9]+)?|\.[0-9]+)',
-          0
+          trim(coalesce(from_label, '')),
+          '\(([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))\s+[A-Za-z0-9._-]+\)',
+          1
         ),
         ',',
         ''
       ) AS DOUBLE
-    ) AS parsed_bare_stolen_amount_native
-  FROM normalized_combined_transactions
+    ) AS from_dormant_value_native,
+
+    upper(
+      NULLIF(
+        trim(
+          regexp_extract(
+            trim(coalesce(from_label, '')),
+            '\((?:[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))\s+([A-Za-z0-9._-]+)\)',
+            1
+          )
+        ),
+        ''
+      )
+    ) AS from_dormant_value_asset,
+
+    try_cast(
+      replace(
+        regexp_extract(
+          trim(coalesce(to_label, '')),
+          '\(([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))\s+[A-Za-z0-9._-]+\)',
+          1
+        ),
+        ',',
+        ''
+      ) AS DOUBLE
+    ) AS to_dormant_value_native,
+
+    upper(
+      NULLIF(
+        trim(
+          regexp_extract(
+            trim(coalesce(to_label, '')),
+            '\((?:[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))\s+([A-Za-z0-9._-]+)\)',
+            1
+          )
+        ),
+        ''
+      )
+    ) AS to_dormant_value_asset
+  FROM base
 ),
 numbered AS (
   SELECT
     *,
     CASE
-      WHEN is_theft_tx = 1 THEN CAST(
-        sum(is_theft_tx) OVER (
+      WHEN lower(coalesce(tx_actions, '')) LIKE '%theft%' THEN CAST(
+        sum(
+          CASE WHEN lower(coalesce(tx_actions, '')) LIKE '%theft%' THEN 1 ELSE 0 END
+        ) OVER (
           ORDER BY ts NULLS LAST, tx_hash, source_file
           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
         ) AS INTEGER
       )
       ELSE NULL
     END AS theft_id
-  FROM base
+  FROM parsed
+),
+valued AS (
+  SELECT
+    *,
+    CASE
+      WHEN amount_native IS NULL THEN coalesce(tx_traced_value_native, amount_native)
+      ELSE LEAST(amount_native, coalesce(tx_traced_value_native, amount_native))
+    END AS stolen_amount_native
+  FROM numbered
 )
 SELECT
   vendor,
@@ -93,31 +195,25 @@ SELECT
   amount_usd,
   transfer_label,
   theft_id,
+  stolen_amount_native,
   CASE
-    WHEN amount_native IS NULL THEN coalesce(parsed_paren_stolen_amount_native, parsed_bare_stolen_amount_native)
-    ELSE LEAST(
-      amount_native,
-      coalesce(parsed_paren_stolen_amount_native, parsed_bare_stolen_amount_native, amount_native)
-    )
-  END AS stolen_amount_native,
-  CASE
-    WHEN amount_native IS NULL OR amount_usd IS NULL THEN NULL
-    WHEN amount_native = 0 THEN NULL
-    ELSE LEAST(
-      amount_usd,
-      amount_usd * (
-        CASE
-          WHEN amount_native IS NULL THEN coalesce(parsed_paren_stolen_amount_native, parsed_bare_stolen_amount_native)
-          ELSE LEAST(
-            amount_native,
-            coalesce(parsed_paren_stolen_amount_native, parsed_bare_stolen_amount_native, amount_native)
-          )
-        END / amount_native
-      )
-    )
+    WHEN amount_native IS NULL OR amount_usd IS NULL OR amount_native = 0 THEN NULL
+    ELSE LEAST(amount_usd, amount_usd * (stolen_amount_native / amount_native))
   END AS stolen_amount_usd,
-  source_file
-FROM numbered;
+  source_file,
+  tx_actions,
+  tx_counterparty,
+  tx_traced_value_native,
+  coalesce(tx_traced_value_asset, asset) AS tx_traced_value_asset,
+  from_types,
+  from_counterparty,
+  from_dormant_value_native,
+  from_dormant_value_asset,
+  to_types,
+  to_counterparty,
+  to_dormant_value_native,
+  to_dormant_value_asset
+FROM valued;
 
 CREATE OR REPLACE VIEW transactions AS
 SELECT * FROM v_transfers;
