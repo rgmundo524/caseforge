@@ -1,18 +1,15 @@
 -- File: 07_duplicate_tx_hash_check.sql
--- Note: duplicate tx_hash values may be legitimate in some exports.
--- This helps distinguish repeated hashes from repeated transfer-shapes.
-
+-- Note: duplicate tx_hash values may be expected for UTXO-shaped exports.
 select
   tx_hash,
-  count(*) as row_count,
-  count(
-    distinct coalesce(from_address, '') || '|' ||
-            coalesce(to_address, '') || '|' ||
-            coalesce(asset, '') || '|' ||
-            coalesce(cast(amount_native as varchar), '')
-  ) as distinct_transfer_shapes
+  min(ts) as min_ts,
+  max(ts) as max_ts,
+  min(chain) as sample_chain,
+  min(format) as sample_format,
+  count(*) as n,
+  sum(coalesce(amount_value, 0)) as summed_amount_value,
+  sum(coalesce(stolen_amount_value, 0)) as summed_stolen_amount_value
 from transactions
-where tx_hash is not null
 group by 1
 having count(*) > 1
-order by row_count desc, tx_hash;
+order by n desc, tx_hash;

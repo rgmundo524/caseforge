@@ -1,13 +1,14 @@
--- Purpose: verify DA extraction is not blank
+-- Purpose: verify service extraction from DA-typed recipient labels is not blank.
 
 with matches as (
   select
-    to_counterparty as recipient_service
+    to_label,
+    to_counterparty as service
   from transactions
-  where regexp_matches(upper(coalesce(to_types, '')), '(^|[/\\,;: ])DA($|[/\\,;: ])')
+  where regexp_matches(upper(coalesce(to_types, '')), '(^|[/\,;: ])DA($|[/\,;: ])')
 )
 select
   count(*) as matching_rows,
-  count(*) filter (where recipient_service is null) as null_extracts,
-  count(*) filter (where trim(recipient_service) = '') as blank_extracts
+  count(*) filter (where service is null) as null_extracts,
+  count(*) filter (where trim(service) = '') as blank_extracts
 from matches;

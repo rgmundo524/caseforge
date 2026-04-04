@@ -1,18 +1,10 @@
--- Purpose: compare raw bracket-match counts against parsed DA counts
+-- Purpose: compare raw DA-like label count against parsed DA-type count.
 
-with raw_match as (
-  select count(*) as n
-  from transactions
-  where regexp_matches(
-    upper(coalesce(to_label, '')),
-    '^\[[^\]]*DA([/\\,;: ][^\]]*)?\]'
-  )
-),
-parsed_match as (
-  select count(*) as n
-  from transactions
-  where regexp_matches(upper(coalesce(to_types, '')), '(^|[/\\,;: ])DA($|[/\\,;: ])')
-)
 select
-  (select n from raw_match) as raw_matching_rows,
-  (select n from parsed_match) as parsed_matching_rows;
+  count(*) filter (
+    where regexp_matches(upper(coalesce(to_label, '')), '^\s*[\[\{][^\]\}]*DA[^\]\}]*[\]\}]')
+  ) as raw_matching_rows,
+  count(*) filter (
+    where regexp_matches(upper(coalesce(to_types, '')), '(^|[/\,;: ])DA($|[/\,;: ])')
+  ) as parsed_matching_rows
+from transactions;

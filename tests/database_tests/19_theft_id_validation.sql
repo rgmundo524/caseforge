@@ -4,11 +4,13 @@ select
   ts,
   tx_hash,
   transfer_label,
-  tx_actions,
-  tx_counterparty,
-  stolen_amount_native,
-  stolen_amount_usd
+  tx_label_actions,
+  tx_label_counterparty,
+  tx_label_value,
+  tx_label_asset,
+  tx_is_theft,
+  count(*) over (partition by tx_hash) as rows_for_tx_hash
 from transactions
-where theft_id is not null
-   or regexp_matches(upper(coalesce(tx_actions, '')), '(^|[/\\,;: ])THEFT($|[/\\,;: ])')
+where tx_is_theft
+   or theft_id is not null
 order by theft_id, ts, tx_hash;

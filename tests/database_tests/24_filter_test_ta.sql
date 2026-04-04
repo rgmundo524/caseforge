@@ -2,7 +2,7 @@ select
   ts,
   tx_hash,
   transfer_label,
-  tx_actions,
+  tx_label_actions,
   from_label,
   from_types,
   from_counterparty,
@@ -12,13 +12,13 @@ select
   to_counterparty,
   to_address,
   asset,
-  amount_native,
-  stolen_amount_native,
-  amount_usd,
-  stolen_amount_usd,
+  amount_value,
+  stolen_amount_value,
+  amount_usd_value,
+  stolen_amount_usd_value,
   theft_id
 from transactions
-where regexp_matches(upper(coalesce(from_types, '')), '(^|[/\\,;: ])TA($|[/\\,;: ])')
-   or regexp_matches(upper(coalesce(to_types, '')), '(^|[/\\,;: ])TA($|[/\\,;: ])')
+where regexp_matches(upper(coalesce(from_types, '')), '(^|[/\,;: ])TA($|[/\,;: ])')
+   or regexp_matches(upper(coalesce(to_types, '')), '(^|[/\,;: ])TA($|[/\,;: ])')
 order by ts desc, tx_hash
 limit 100;

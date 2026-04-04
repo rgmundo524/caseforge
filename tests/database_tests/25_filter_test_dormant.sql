@@ -7,22 +7,22 @@ select
   from_label,
   from_types,
   from_counterparty,
-  from_dormant_value_native,
-  from_dormant_value_asset,
+  from_dormant_value,
+  from_dormant_asset,
   from_address,
   to_label,
   to_types,
   to_counterparty,
-  to_dormant_value_native,
-  to_dormant_value_asset,
+  to_dormant_value,
+  to_dormant_asset,
   to_address,
   asset,
-  amount_native,
-  amount_usd,
-  stolen_amount_native,
-  stolen_amount_usd
+  amount_value,
+  amount_usd_value,
+  stolen_amount_value,
+  stolen_amount_usd_value
 from transactions
-where from_dormant_value_native is not null
-   or to_dormant_value_native is not null
+where from_dormant_value is not null
+   or to_dormant_value is not null
 order by ts desc, tx_hash
 limit 100;
