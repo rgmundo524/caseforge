@@ -84,6 +84,7 @@ REQUIRED_HEADERS = {
     },
 }
 
+STABLECOINS_REL = Path("config/stablecoins.txt")
 
 
 @dataclass(frozen=True)
@@ -109,6 +110,47 @@ def _repo_root() -> Path:
 
 def _sql_template_dir() -> Path:
     return _repo_root() / "templates" / "sql" / "normalize"
+
+
+def _stablecoins_path() -> Path:
+    return _repo_root() / STABLECOINS_REL
+
+
+def _load_stablecoin_assets() -> list[str]:
+    path = _stablecoins_path()
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Missing stablecoin config: {path}. Expected one symbol per line."
+        )
+
+    assets: list[str] = []
+    seen: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        token = line.strip()
+        if not token or token.startswith("#"):
+            continue
+        asset = token.upper()
+        if asset in seen:
+            continue
+        seen.add(asset)
+        assets.append(asset)
+
+    if not assets:
+        raise RuntimeError(f"Stablecoin config is empty: {path}")
+    return assets
+
+
+def _stablecoins_view_sql(assets: list[str]) -> str:
+    values_sql = ",\n      ".join(
+        f"('{asset.replace("'", "''")}')" for asset in assets
+    )
+    return (
+        "CREATE OR REPLACE VIEW v_stablecoins AS\n"
+        "SELECT *\n"
+        "FROM (VALUES\n"
+        f"      {values_sql}\n"
+        ") AS t(asset);"
+    )
 
 
 def _load_manifest(case_root: Path) -> Dict[str, Any]:
@@ -276,6 +318,9 @@ def normalize_db(*, case_root: Path, duckdb_bin: str = "duckdb") -> None:
     manifest = _load_manifest(case_root)
     entries = list(_iter_entries(case_root, manifest))
 
+    stablecoin_assets = _load_stablecoin_assets()
+    stablecoins_sql = _stablecoins_view_sql(stablecoin_assets)
+
     db_path = case_root / "data" / "case.duckdb"
 
     bootstrap_sql = f"""
@@ -299,6 +344,8 @@ def normalize_db(*, case_root: Path, duckdb_bin: str = "duckdb") -> None:
       value DOUBLE,
       usd DOUBLE
     );
+
+    {stablecoins_sql}
 
     CREATE OR REPLACE VIEW v_normalized_transactions AS
     SELECT * FROM normalized_combined_transactions;

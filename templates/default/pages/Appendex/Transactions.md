@@ -29,131 +29,105 @@ order by label;
 />
 
 ```sql transfers_by_chain
-with parsed as (
-  select
-    upper(substr(coalesce(chain, ''), 1, 1)) || lower(substr(coalesce(chain, ''), 2)) as chain,
-    tx_hash,
-    transfer_label,
-    ts,
-    from_label,
-    from_address,
-    to_label,
-    to_address,
-    amount_native,
-    asset,
-    amount_usd,
-    stolen_amount_native,
-    nullif(trim(regexp_extract(trim(coalesce(transfer_label, '')), '^\[([^\]]+)\]', 1)), '') as tx_actions,
-    nullif(
-      trim(
-        regexp_replace(
-          trim(regexp_replace(trim(coalesce(transfer_label, '')), '^\[[^\]]+\]\s*', '')),
-          '\s*\([^)]*\)\s*$',
-          ''
-        )
-      ),
-      ''
-    ) as tx_counterparty,
-    try_cast(
-      replace(
-        regexp_extract(
-          trim(coalesce(transfer_label, '')),
-          '\(([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))\s+[A-Za-z0-9._-]+\)',
-          1
-        ),
-        ',',
-        ''
-      ) as double
-    ) as tx_traced_value_native,
-    upper(
-      nullif(
-        trim(
-          regexp_extract(
-            trim(coalesce(transfer_label, '')),
-            '\((?:[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))\s+([A-Za-z0-9._-]+)\)',
-            1
-          )
-        ),
-        ''
-      )
-    ) as tx_traced_value_asset
-  from "case".transactions
-  where
-    '${inputs.chain_filter.value}' = 'all'
-    or trim(lower(chain)) = '${inputs.chain_filter.value}'
-)
 select
-  chain,
+  upper(substr(coalesce(chain, ''), 1, 1)) || lower(substr(coalesce(chain, ''), 2)) as chain,
   tx_hash,
   transfer_label,
-  tx_actions,
-  tx_counterparty,
-  coalesce(tx_traced_value_native, stolen_amount_native) as tx_traced_value_native,
-  coalesce(tx_traced_value_asset, asset) as tx_traced_value_asset,
+  tx_label_actions,
+  tx_label_counterparty,
+  tx_label_value,
+  tx_label_asset,
+  tx_label_status,
   ts,
   from_label,
+  from_types,
+  from_counterparty,
+  from_dormant_value,
+  from_dormant_asset,
+  from_label_status,
   from_address,
   to_label,
+  to_types,
+  to_counterparty,
+  to_dormant_value,
+  to_dormant_asset,
+  to_label_status,
   to_address,
-  amount_native,
   asset,
-  amount_usd,
-  stolen_amount_native
-from parsed
-order by ts;
+  amount_value,
+  amount_usd_value,
+  stolen_amount_value,
+  stolen_amount_usd_value,
+  tx_is_theft,
+  tx_is_cross_chain,
+  tx_cc_id,
+  tx_cc_direction,
+  time_status,
+  amount_status,
+  usd_status,
+  source_file
+from "case".transactions
+where
+  '${inputs.chain_filter.value}' = 'all'
+  or lower(chain) = '${inputs.chain_filter.value}'
+order by ts nulls last, tx_hash;
 ```
 
 <DataTable data={transfers_by_chain} title="Transactions by Blockchain" subtitle="Filtered by Chain" search download rows=20 rowNumbers rowLines rowShading>
   <Column id=chain title="Blockchain" />
   <Column id=tx_hash title="Transaction Hash" />
   <Column id=transfer_label title="Transaction Label" />
-  <Column id=tx_actions title="Actions" />
-  <Column id=tx_counterparty title="Counterparty" />
-  <Column id=tx_traced_value_native title="Traced Value" />
-  <Column id=tx_traced_value_asset title="Traced Asset" />
+  <Column id=tx_label_actions title="Actions" />
+  <Column id=tx_label_counterparty title="Tx Counterparty" />
+  <Column id=tx_label_value title="Tx Label Value" />
+  <Column id=tx_label_asset title="Tx Label Asset" />
+  <Column id=tx_label_status title="Tx Label Status" />
   <Column id=ts title="Date/Time" />
-  <Column id=from_label title="Sender" />
+  <Column id=from_label title="Sender Label" />
+  <Column id=from_types title="Sender Types" />
+  <Column id=from_counterparty title="Sender Counterparty" />
+  <Column id=from_dormant_value title="Sender Dormant Value" />
+  <Column id=from_dormant_asset title="Sender Dormant Asset" />
+  <Column id=from_label_status title="Sender Label Status" />
   <Column id=from_address title="Sender Address" />
-  <Column id=to_label title="Receiver" />
-  <Column id=to_address title="Receiver Address" />
-  <Column id=amount_native title="Value" />
+  <Column id=to_label title="Recipient Label" />
+  <Column id=to_types title="Recipient Types" />
+  <Column id=to_counterparty title="Recipient Counterparty" />
+  <Column id=to_dormant_value title="Recipient Dormant Value" />
+  <Column id=to_dormant_asset title="Recipient Dormant Asset" />
+  <Column id=to_label_status title="Recipient Label Status" />
+  <Column id=to_address title="Recipient Address" />
   <Column id=asset title="Asset" />
-  <Column id=amount_usd title="USD Value" fmt=usd />
-  <Column id=stolen_amount_native title="Stolen Value" />
+  <Column id=amount_value title="Transfer Value" />
+  <Column id=amount_usd_value title="Transfer USD Value" fmt=usd />
+  <Column id=stolen_amount_value title="Stolen Value" />
+  <Column id=stolen_amount_usd_value title="Stolen USD Value" fmt=usd />
+  <Column id=tx_is_theft title="Theft" />
+  <Column id=tx_is_cross_chain title="Cross-Chain" />
+  <Column id=tx_cc_id title="CC Group" />
+  <Column id=tx_cc_direction title="CC Direction" />
+  <Column id=time_status title="Time Status" />
+  <Column id=amount_status title="Amount Status" />
+  <Column id=usd_status title="USD Status" />
+  <Column id=source_file title="Source File" />
 </DataTable>
 
 ## Service Deposit Address Transactions
 
-This table shows transactions where the recipient address label contains the `DA` type code. Use the recipient service dropdown to narrow the results to a single service.
+This table shows transactions where the recipient label contains the `DA` type code. Use the recipient service dropdown to narrow the results to a single service.
 
 ```sql recipient_services
-with parsed as (
-  select
-    chain,
-    nullif(trim(regexp_extract(trim(coalesce(to_label, '')), '^\[([^\]]+)\]', 1)), '') as to_types,
-    nullif(
-      trim(
-        regexp_replace(
-          trim(regexp_replace(trim(coalesce(to_label, '')), '^\[[^\]]+\]\s*', '')),
-          '\s*\([^)]*\)\s*$',
-          ''
-        )
-      ),
-      ''
-    ) as to_counterparty
-  from "case".transactions
-),
-services as (
+with services as (
   select
     lower(to_counterparty) as value,
     min(to_counterparty) as label
-  from parsed
+  from "case".transactions
   where
-    regexp_matches(coalesce(to_types, ''), '(^|[/:\\])DA($|[/:\\])', 'i')
+    regexp_matches(coalesce(to_types, ''), '(^|[/\\])DA($|[/\\])', 'i')
     and coalesce(to_counterparty, '') <> ''
     and (
       '${inputs.chain_filter.value}' = 'all'
-      or trim(lower(chain)) = '${inputs.chain_filter.value}'
+      or lower(chain) = '${inputs.chain_filter.value}'
     )
   group by lower(to_counterparty)
 )
@@ -174,54 +148,34 @@ order by label;
 />
 
 ```sql service_deposit_address_transactions_table
-with parsed as (
-  select
-    chain,
-    ts as time,
-    transfer_label,
-    tx_hash as transaction,
-    from_label as source_address_label,
-    from_address as source_address_hash,
-    to_label as recipient_address_label,
-    to_address as recipient_address_hash,
-    amount_native as crypto_value,
-    asset as crypto_asset,
-    amount_usd as usd,
-    nullif(trim(regexp_extract(trim(coalesce(to_label, '')), '^\[([^\]]+)\]', 1)), '') as to_types,
-    nullif(
-      trim(
-        regexp_replace(
-          trim(regexp_replace(trim(coalesce(to_label, '')), '^\[[^\]]+\]\s*', '')),
-          '\s*\([^)]*\)\s*$',
-          ''
-        )
-      ),
-      ''
-    ) as recipient_service
-  from "case".transactions
-)
 select
-  time,
+  ts as time,
   transfer_label,
-  transaction,
-  source_address_label,
-  source_address_hash,
-  recipient_address_label,
-  recipient_address_hash,
-  crypto_value,
-  crypto_asset,
-  usd
-from parsed
+  tx_hash as transaction,
+  tx_label_actions,
+  tx_label_counterparty,
+  from_label as source_address_label,
+  from_address as source_address_hash,
+  to_label as recipient_address_label,
+  to_address as recipient_address_hash,
+  to_counterparty as recipient_service,
+  amount_value as crypto_value,
+  asset as crypto_asset,
+  amount_usd_value as usd,
+  stolen_amount_value,
+  stolen_amount_usd_value,
+  source_file
+from "case".transactions
 where
-  regexp_matches(coalesce(to_types, ''), '(^|[/:\\])DA($|[/:\\])', 'i')
-  and coalesce(recipient_service, '') <> ''
+  regexp_matches(coalesce(to_types, ''), '(^|[/\\])DA($|[/\\])', 'i')
+  and coalesce(to_counterparty, '') <> ''
   and (
     '${inputs.chain_filter.value}' = 'all'
-    or trim(lower(chain)) = '${inputs.chain_filter.value}'
+    or lower(chain) = '${inputs.chain_filter.value}'
   )
   and (
     '${inputs.service_filter.value}' = 'all'
-    or lower(recipient_service) = '${inputs.service_filter.value}'
+    or lower(to_counterparty) = '${inputs.service_filter.value}'
   )
 order by time asc;
 ```
@@ -230,167 +184,114 @@ order by time asc;
   <Column id=time title="Date/Time" />
   <Column id=transfer_label title="Transaction Label" />
   <Column id=transaction title="Transaction Hash" />
+  <Column id=tx_label_actions title="Actions" />
+  <Column id=tx_label_counterparty title="Tx Counterparty" />
   <Column id=source_address_label title="Sender Label" />
   <Column id=source_address_hash title="Sender Address" />
   <Column id=recipient_address_label title="Recipient Label" />
   <Column id=recipient_address_hash title="Recipient Address" />
+  <Column id=recipient_service title="Recipient Service" />
   <Column id=crypto_value title="Value" />
   <Column id=crypto_asset title="Asset" />
   <Column id=usd title="USD Value" fmt=usd />
+  <Column id=stolen_amount_value title="Stolen Value" />
+  <Column id=stolen_amount_usd_value title="Stolen USD Value" fmt=usd />
+  <Column id=source_file title="Source File" />
 </DataTable>
 
-## Cross-Chain Transactions
+## Cross-Chain Pairing
 
-This table shows transactions whose transaction action block contains `CC`.
+This table pairs `CC:{id}:IN` rows with `CC:{id}:OUT` rows so the investigation can quickly identify matched and missing bridge legs.
 
-```sql crosschain_transactions_table
-with parsed as (
-  select
-    ts as time,
-    transfer_label,
-    tx_hash as transaction,
-    from_label as source_address_label,
-    from_address as source_address_hash,
-    to_label as recipient_address_label,
-    to_address as recipient_address_hash,
-    amount_native as crypto_value,
-    asset as crypto_asset,
-    amount_usd as usd,
-    nullif(trim(regexp_extract(trim(coalesce(transfer_label, '')), '^\[([^\]]+)\]', 1)), '') as tx_actions
-  from "case".transactions
-)
+```sql cross_chain_pairs
 select
-  time,
+  tx_cc_id,
+  cc_pair_status,
+  in_tx_hash,
+  in_chain,
+  in_asset,
+  in_amount_value,
+  in_label_value,
+  in_label_asset,
+  in_ts,
+  out_tx_hash,
+  out_chain,
+  out_asset,
+  out_amount_value,
+  out_label_value,
+  out_label_asset,
+  out_ts
+from "case".v_cross_chain_pairs
+order by tx_cc_id;
+```
+
+<DataTable data={cross_chain_pairs} title="Cross-Chain Pairing" search download rows=20 rowNumbers rowLines rowShading>
+  <Column id=tx_cc_id title="CC Group" />
+  <Column id=cc_pair_status title="Pair Status" />
+  <Column id=in_tx_hash title="Input Tx Hash" />
+  <Column id=in_chain title="Input Chain" />
+  <Column id=in_asset title="Input Asset" />
+  <Column id=in_amount_value title="Input Amount" />
+  <Column id=in_label_value title="Input Label Value" />
+  <Column id=in_label_asset title="Input Label Asset" />
+  <Column id=in_ts title="Input Time" />
+  <Column id=out_tx_hash title="Output Tx Hash" />
+  <Column id=out_chain title="Output Chain" />
+  <Column id=out_asset title="Output Asset" />
+  <Column id=out_amount_value title="Output Amount" />
+  <Column id=out_label_value title="Output Label Value" />
+  <Column id=out_label_asset title="Output Label Asset" />
+  <Column id=out_ts title="Output Time" />
+</DataTable>
+
+## Rows Needing Review
+
+These are rows where parsing or normalization produced an issue status. This should help investigators and operators identify malformed labels, missing timestamps, or suspicious value conditions quickly.
+
+```sql issue_rows
+select
+  ts,
+  chain,
+  tx_hash,
   transfer_label,
-  transaction,
-  source_address_label,
-  source_address_hash,
-  recipient_address_label,
-  recipient_address_hash,
-  crypto_value,
-  crypto_asset,
-  usd
-from parsed
-where regexp_matches(coalesce(tx_actions, ''), '(^|[/:\\])CC($|[/:\\])', 'i')
-order by time asc;
-```
-
-<DataTable data={crosschain_transactions_table} title="Cross-Chain Transactions" search download rows=50 rowNumbers rowLines rowShading>
-  <Column id=time title="Date/Time" />
-  <Column id=transfer_label title="Transaction Label" />
-  <Column id=transaction title="Transaction Hash" />
-  <Column id=source_address_label title="Sender Label" />
-  <Column id=source_address_hash title="Sender Address" />
-  <Column id=recipient_address_label title="Recipient Label" />
-  <Column id=recipient_address_hash title="Recipient Address" />
-  <Column id=crypto_value title="Value" />
-  <Column id=crypto_asset title="Asset" />
-  <Column id=usd title="USD Value" fmt=usd />
-</DataTable>
-
-## Transfers by Service
-
-This table aggregates deposits to recipient labels that contain the `DA` type code.
-
-```sql transfers_by_service
-with parsed as (
-  select
-    asset,
-    amount_native,
-    stolen_amount_native,
-    amount_usd,
-    stolen_amount_usd,
-    nullif(trim(regexp_extract(trim(coalesce(to_label, '')), '^\[([^\]]+)\]', 1)), '') as to_types,
-    nullif(
-      trim(
-        regexp_replace(
-          trim(regexp_replace(trim(coalesce(to_label, '')), '^\[[^\]]+\]\s*', '')),
-          '\s*\([^)]*\)\s*$',
-          ''
-        )
-      ),
-      ''
-    ) as to_counterparty
-  from "case".transactions
-  where
-    '${inputs.chain_filter.value}' = 'all'
-    or lower(chain) = lower('${inputs.chain_filter.value}')
-)
-select
-  to_counterparty as service,
+  from_label,
+  to_label,
   asset,
-  count(*) as tx_count,
-  sum(amount_native) as gross_amount_native,
-  sum(stolen_amount_native) as stolen_amount_native,
-  sum(amount_usd) as gross_amount_usd,
-  sum(stolen_amount_usd) as stolen_amount_usd
-from parsed
+  amount_value,
+  tx_label_value,
+  tx_label_asset,
+  tx_label_status,
+  from_label_status,
+  to_label_status,
+  time_status,
+  amount_status,
+  usd_status,
+  issue_flags,
+  source_file
+from "case".v_issue_rows
 where
-  regexp_matches(coalesce(to_types, ''), '(^|[/:\\])DA($|[/:\\])', 'i')
-  and coalesce(to_counterparty, '') <> ''
-group by 1,2
-order by stolen_amount_usd desc nulls last, stolen_amount_native desc;
+  '${inputs.chain_filter.value}' = 'all'
+  or lower(chain) = '${inputs.chain_filter.value}'
+order by ts nulls last, tx_hash;
 ```
 
-<DataTable data={transfers_by_service} title="Deposits by Service" search download rows=50 rowNumbers rowLines rowShading>
-  <Column id=service title="Service" />
+<DataTable data={issue_rows} title="Rows Needing Review" search download rows=20 rowNumbers rowLines rowShading>
+  <Column id=ts title="Date/Time" />
+  <Column id=chain title="Chain" />
+  <Column id=tx_hash title="Transaction Hash" />
+  <Column id=transfer_label title="Transaction Label" />
+  <Column id=from_label title="Sender Label" />
+  <Column id=to_label title="Recipient Label" />
   <Column id=asset title="Asset" />
-  <Column id=tx_count title="Tx Count" />
-  <Column id=gross_amount_native title="Gross Native" />
-  <Column id=stolen_amount_native title="Stolen Native" />
-  <Column id=gross_amount_usd title="Gross USD" fmt=usd />
-  <Column id=stolen_amount_usd title="Stolen USD" fmt=usd />
+  <Column id=amount_value title="Transfer Value" />
+  <Column id=tx_label_value title="Label Value" />
+  <Column id=tx_label_asset title="Label Asset" />
+  <Column id=tx_label_status title="Tx Label Status" />
+  <Column id=from_label_status title="Sender Label Status" />
+  <Column id=to_label_status title="Recipient Label Status" />
+  <Column id=time_status title="Time Status" />
+  <Column id=amount_status title="Amount Status" />
+  <Column id=usd_status title="USD Status" />
+  <Column id=issue_flags title="Issue Flags" />
+  <Column id=source_file title="Source File" />
 </DataTable>
-
----
-
-## Service Deposit Distribution (Donut)
-
-This donut chart shows the distribution of stolen USD deposits by service for the selected chain.
-
-```sql service_donut_data
-with parsed as (
-  select
-    nullif(trim(regexp_extract(trim(coalesce(to_label, '')), '^\[([^\]]+)\]', 1)), '') as to_types,
-    nullif(
-      trim(
-        regexp_replace(
-          trim(regexp_replace(trim(coalesce(to_label, '')), '^\[[^\]]+\]\s*', '')),
-          '\s*\([^)]*\)\s*$',
-          ''
-        )
-      ),
-      ''
-    ) as to_counterparty,
-    stolen_amount_usd
-  from "case".transactions
-  where
-    '${inputs.chain_filter.value}' = 'all'
-    or lower(chain) = lower('${inputs.chain_filter.value}')
-)
-select
-  to_counterparty as name,
-  sum(stolen_amount_usd) as value
-from parsed
-where
-  regexp_matches(coalesce(to_types, ''), '(^|[/:\\])DA($|[/:\\])', 'i')
-  and coalesce(to_counterparty, '') <> ''
-group by 1
-order by value desc;
-```
-
-<ECharts config={
-  {
-    tooltip: { formatter: '{b}: {c} ({d}%)' },
-    series: [
-      {
-        type: 'pie',
-        radius: ['40%', '70%'],
-        avoidLabelOverlap: true,
-        label: { show: true },
-        labelLine: { show: true },
-        data: [...service_donut_data],
-      }
-    ]
-  }
-}/>

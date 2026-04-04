@@ -17,7 +17,6 @@ select
   t.ts,
   t.tx_hash,
   t.transfer_label,
-  t.tx_label_has_multiple_segments,
   t.tx_actions,
   t.tx_counterparty,
   t.tx_traced_value_native,
@@ -46,7 +45,12 @@ select
   r.source_group,
   r.source_group_description,
   r.destination_group,
-  r.destination_group_description
+  r.destination_group_description,
+  r.source_address as raw_source_address,
+  r.destination_address as raw_destination_address,
+  r.value as raw_value,
+  r.usd as raw_usd,
+  r.time as raw_time
 from transactions t
 left join raw_one r
   on r.source_file = t.source_file

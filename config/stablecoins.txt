@@ -1,0 +1,14 @@
+# One symbol per line. Keep uppercase.
+USDT
+USDC
+USDM
+RUSD
+DAI
+TUSD
+FDUSD
+USDP
+GUSD
+LUSD
+PYUSD
+USDE
+FRAX

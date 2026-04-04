@@ -1,21 +1,21 @@
 #!/usr/bin/env fish
 
 if test (count $argv) -lt 2
-    echo "Usage: $argv[0] /path/to/case.duckdb /path/to/sql-dir [output-file]" >&2
+    echo "Usage: "(status filename)" /path/to/case.duckdb /path/to/sql-dir [output-file]" >&2
     exit 1
 end
 
-set -l db_file $argv[1]
-set -l test_dir $argv[2]
+set db_file $argv[1]
+set test_dir $argv[2]
 
 if test (count $argv) -ge 3
-    set -l output_file $argv[3]
+    set output_file $argv[3]
 else
-    set -l timestamp (date "+%Y%m%d_%H%M%S")
-    set -l output_file "./duckdb_test_results_$timestamp.txt"
+    set timestamp (date "+%Y%m%d_%H%M%S")
+    set output_file "./duckdb_test_results_$timestamp.txt"
 end
 
-set -l duckdb_bin duckdb
+set duckdb_bin duckdb
 if set -q DUCKDB_BIN
     set duckdb_bin $DUCKDB_BIN
 end
@@ -35,12 +35,18 @@ if not type -q $duckdb_bin
     exit 1
 end
 
-set -l sql_files (find "$test_dir" -maxdepth 1 -type f -name "*.sql" | sort)
-
+set sql_files (find "$test_dir" -maxdepth 1 -type f -name "*.sql" | sort)
 if test (count $sql_files) -eq 0
     echo "Error: no .sql files found in $test_dir" >&2
     exit 1
 end
+
+set output_dir (dirname -- "$output_file")
+if test -n "$output_dir" -a "$output_dir" != "."
+    mkdir -p "$output_dir"
+end
+
+touch "$output_file"
 
 function hr
     printf '%s\n' "======================================================================"
@@ -55,17 +61,15 @@ begin
     echo "Queries:  "(realpath "$test_dir")
     echo "Runner:   fish"
     echo "DuckDB:   $duckdb_bin"
+    echo "Output:   $output_file"
     echo ""
-end > "$output_file"
+end | tee "$output_file" >/dev/null
 
+set failed 0
 for sql_file in $sql_files
-    set -l filename (basename "$sql_file")
+    set filename (basename "$sql_file")
 
-    if test "$filename" = "build_from_normalized.sql"
-        continue
-    end
-
-    set -l tmp_output (mktemp)
+    set tmp_output (mktemp)
 
     begin
         echo ""
@@ -76,7 +80,7 @@ for sql_file in $sql_files
     end | tee -a "$output_file"
 
     $duckdb_bin "$db_file" < "$sql_file" > "$tmp_output" 2>&1
-    set -l cmd_status $status
+    set cmd_status $status
 
     cat "$tmp_output" | tee -a "$output_file"
 
@@ -86,6 +90,10 @@ for sql_file in $sql_files
         echo ""
     end | tee -a "$output_file"
 
+    if test $cmd_status -ne 0
+        set failed 1
+    end
+
     rm -f "$tmp_output"
 end
 
@@ -93,5 +101,8 @@ begin
     hr
     echo "Finished: "(date)
     echo "Output:   "(realpath "$output_file")
+    echo "Overall:  "(test $failed -eq 0; and echo "SUCCESS"; or echo "FAILURES PRESENT")
     hr
 end | tee -a "$output_file"
+
+exit $failed
