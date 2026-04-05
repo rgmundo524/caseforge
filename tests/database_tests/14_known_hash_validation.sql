@@ -1,10 +1,7 @@
--- File: 14_known_hash_validation.sql
 select
   ts,
   tx_hash,
-  transfer_label,
-  tx_label_actions,
-  tx_label_counterparty,
+  direction,
   from_label,
   from_address,
   to_label,
@@ -12,17 +9,14 @@ select
   asset,
   amount_value,
   amount_usd_value,
-  stolen_amount_value,
-  stolen_amount_usd_value,
-  theft_id,
-  tx_is_theft,
-  tx_is_cross_chain,
+  transfer_label,
+  tx_label_actions,
   tx_cc_id,
   tx_cc_direction
 from transactions
 where tx_hash in (
-  '0x8ad1474322f9ddd7060d37f54ef1481d357cb7efca937f4c5c4abdf5452fdfdb',
-  '0d8814b612a0c48669b4f7edd76c0b92b5d1a752cb8de067f3942eb9f0d0fbd8',
-  '1609b461aa45ef96c8d1eb48e06e2024b63e13092081b4007a7e4e5e34cb7030'
+  '0x1187434d2f99d3f0f428b7c11cdcec34a14678203b05e0ebc07e5b90f48a33c1',
+  '7e1aed7155ee8131b7fc5c173279e440be04fe99f53b371729bd72370f36074c',
+  'c0d7a623611c39b654379478d8694819322802d814dddd8d4f571f92f590be1d'
 )
-order by ts, tx_hash;
+order by ts, tx_hash, direction nulls first;

@@ -1,19 +1,17 @@
 select
   ts,
   tx_hash,
+  direction,
   transfer_label,
-  tx_label_actions,
-  tx_label_counterparty,
-  tx_label_value,
-  tx_label_asset,
-  tx_label_status,
   asset,
   amount_value,
+  tx_label_value,
+  tx_label_asset,
   stolen_amount_value,
   amount_usd_value,
-  stolen_amount_usd_value
+  stolen_amount_usd_value,
+  tx_label_status
 from transactions
-where tx_label_value is not null
-   or transfer_label like '%(%'
-order by ts desc, tx_hash
-limit 100;
+where transfer_label like '%(%'
+order by ts desc, tx_hash, direction nulls first
+limit 150;

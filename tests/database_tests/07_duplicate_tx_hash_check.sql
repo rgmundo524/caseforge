@@ -1,15 +1,13 @@
--- File: 07_duplicate_tx_hash_check.sql
--- Note: duplicate tx_hash values may be expected for UTXO-shaped exports.
 select
   tx_hash,
-  min(ts) as min_ts,
-  max(ts) as max_ts,
-  min(chain) as sample_chain,
-  min(format) as sample_format,
-  count(*) as n,
-  sum(coalesce(amount_value, 0)) as summed_amount_value,
-  sum(coalesce(stolen_amount_value, 0)) as summed_stolen_amount_value
+  count(*) as transfer_rows,
+  min(chain) as chain,
+  min(format) as format,
+  string_agg(distinct coalesce(direction, 'null'), ' | ') as directions,
+  sum(coalesce(amount_value, 0)) as total_amount_value,
+  min(ts) as first_ts,
+  max(ts) as last_ts
 from transactions
-group by 1
+group by tx_hash
 having count(*) > 1
-order by n desc, tx_hash;
+order by transfer_rows desc, tx_hash;

@@ -1,13 +1,13 @@
 PRAGMA threads=4;
 
--- v_stablecoins is created during normalize bootstrap and persisted in case.duckdb.
--- It is intentionally injected from repo config by Python so DuckDB does not
--- depend on a case-root-relative file path here.
+-- Assumes normalize.py has already created v_stablecoins.
+-- This build keeps one row per normalized transfer leg.
 
 CREATE OR REPLACE VIEW v_transfers AS
 WITH base AS (
   SELECT
     vendor,
+    tx_model,
     CASE
       WHEN vendor = 'trm'  AND tx_model = 'account' THEN 'trm'
       WHEN vendor = 'trm'  AND tx_model = 'utxo'    THEN 'trm'
@@ -23,7 +23,7 @@ WITH base AS (
     nullif(trim(regexp_replace(replace(replace(replace(coalesce(source_label, ''), '"', ''), '{', '['), '}', ']'), '\s+', ' ', 'g')), '') AS from_label,
     nullif(trim(regexp_replace(replace(replace(replace(coalesce(destination_label, ''), '"', ''), '{', '['), '}', ']'), '\s+', ' ', 'g')), '') AS to_label,
     NULL::VARCHAR AS address_label,
-    CASE WHEN tx_model = 'utxo' THEN 'utxo' ELSE NULL END AS direction,
+    lower(nullif(trim(direction), '')) AS direction,
     upper(nullif(trim(asset), '')) AS asset,
     value AS amount_value,
     CASE
@@ -37,15 +37,15 @@ WITH base AS (
   SELECT
     *,
     trim(coalesce(transfer_label, '')) AS transfer_label_clean,
-    trim(coalesce(from_label, ''))     AS from_label_clean,
-    trim(coalesce(to_label, ''))       AS to_label_clean
+    trim(coalesce(from_label, '')) AS from_label_clean,
+    trim(coalesce(to_label, '')) AS to_label_clean
   FROM base
 ), parsed AS (
   SELECT
     *,
     nullif(trim(regexp_extract(transfer_label_clean, '^\[([^]]+)\]', 1)), '') AS tx_label_actions,
-    nullif(trim(regexp_extract(from_label_clean,     '^\[([^]]+)\]', 1)), '') AS from_types,
-    nullif(trim(regexp_extract(to_label_clean,       '^\[([^]]+)\]', 1)), '') AS to_types,
+    nullif(trim(regexp_extract(from_label_clean, '^\[([^]]+)\]', 1)), '') AS from_types,
+    nullif(trim(regexp_extract(to_label_clean, '^\[([^]]+)\]', 1)), '') AS to_types,
 
     nullif(
       trim(
@@ -79,44 +79,20 @@ WITH base AS (
     ) AS to_counterparty_raw,
 
     nullif(trim(regexp_extract(transfer_label_clean, '\(([^)]*)\)\s*$', 1)), '') AS tx_paren_body,
-    nullif(trim(regexp_extract(from_label_clean,     '\(([^)]*)\)\s*$', 1)), '') AS from_paren_body,
-    nullif(trim(regexp_extract(to_label_clean,       '\(([^)]*)\)\s*$', 1)), '') AS to_paren_body
+    nullif(trim(regexp_extract(from_label_clean, '\(([^)]*)\)\s*$', 1)), '') AS from_paren_body,
+    nullif(trim(regexp_extract(to_label_clean, '\(([^)]*)\)\s*$', 1)), '') AS to_paren_body
   FROM labels
 ), measured AS (
   SELECT
     *,
-    try_cast(
-      replace(
-        regexp_extract(coalesce(tx_paren_body, ''), '([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))', 1),
-        ',',
-        ''
-      ) AS DOUBLE
-    ) AS tx_label_value_raw,
-    upper(nullif(trim(regexp_extract(coalesce(tx_paren_body, ''), '^[^A-Za-z0-9._-]*[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)\s*([A-Za-z0-9._-]+)\s*$', 1)), '')) AS tx_label_asset_raw,
-    regexp_matches(coalesce(tx_paren_body, ''), '[A-Za-z]')
-      AND NOT regexp_matches(coalesce(tx_paren_body, ''), '[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)') AS tx_asset_without_value,
+    nullif(trim(regexp_extract(coalesce(tx_paren_body, ''), '^\s*([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))', 1)), '') AS tx_value_token,
+    nullif(trim(regexp_replace(coalesce(tx_paren_body, ''), '^\s*[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)\s*', '')), '') AS tx_tail_raw,
 
-    try_cast(
-      replace(
-        regexp_extract(coalesce(from_paren_body, ''), '([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))', 1),
-        ',',
-        ''
-      ) AS DOUBLE
-    ) AS from_dormant_value_raw,
-    upper(nullif(trim(regexp_extract(coalesce(from_paren_body, ''), '^[^A-Za-z0-9._-]*[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)\s*([A-Za-z0-9._-]+)\s*$', 1)), '')) AS from_dormant_asset_raw,
-    regexp_matches(coalesce(from_paren_body, ''), '[A-Za-z]')
-      AND NOT regexp_matches(coalesce(from_paren_body, ''), '[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)') AS from_asset_without_value,
+    nullif(trim(regexp_extract(coalesce(from_paren_body, ''), '^\s*([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))', 1)), '') AS from_value_token,
+    nullif(trim(regexp_replace(coalesce(from_paren_body, ''), '^\s*[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)\s*', '')), '') AS from_tail_raw,
 
-    try_cast(
-      replace(
-        regexp_extract(coalesce(to_paren_body, ''), '([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))', 1),
-        ',',
-        ''
-      ) AS DOUBLE
-    ) AS to_dormant_value_raw,
-    upper(nullif(trim(regexp_extract(coalesce(to_paren_body, ''), '^[^A-Za-z0-9._-]*[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)\s*([A-Za-z0-9._-]+)\s*$', 1)), '')) AS to_dormant_asset_raw,
-    regexp_matches(coalesce(to_paren_body, ''), '[A-Za-z]')
-      AND NOT regexp_matches(coalesce(to_paren_body, ''), '[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)') AS to_asset_without_value
+    nullif(trim(regexp_extract(coalesce(to_paren_body, ''), '^\s*([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))', 1)), '') AS to_value_token,
+    nullif(trim(regexp_replace(coalesce(to_paren_body, ''), '^\s*[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)\s*', '')), '') AS to_tail_raw
   FROM parsed
 ), normalized AS (
   SELECT
@@ -134,125 +110,148 @@ WITH base AS (
       ELSE NULL
     END AS to_counterparty,
 
+    try_cast(replace(tx_value_token, ',', '') AS DOUBLE) AS tx_label_value,
     CASE
-      WHEN tx_label_value_raw IS NULL THEN NULL
-      ELSE tx_label_value_raw
-    END AS tx_label_value,
-    CASE
-      WHEN tx_label_value_raw IS NULL THEN NULL
-      ELSE coalesce(tx_label_asset_raw, asset)
+      WHEN tx_value_token IS NULL THEN NULL
+      WHEN tx_tail_raw IS NULL THEN asset
+      ELSE upper(tx_tail_raw)
     END AS tx_label_asset,
+
+    try_cast(replace(from_value_token, ',', '') AS DOUBLE) AS from_dormant_value,
     CASE
-      WHEN from_dormant_value_raw IS NULL THEN NULL
-      ELSE from_dormant_value_raw
-    END AS from_dormant_value,
-    CASE
-      WHEN from_dormant_value_raw IS NULL THEN NULL
-      ELSE coalesce(from_dormant_asset_raw, asset)
+      WHEN from_value_token IS NULL THEN NULL
+      WHEN from_tail_raw IS NULL THEN asset
+      ELSE upper(from_tail_raw)
     END AS from_dormant_asset,
+
+    try_cast(replace(to_value_token, ',', '') AS DOUBLE) AS to_dormant_value,
     CASE
-      WHEN to_dormant_value_raw IS NULL THEN NULL
-      ELSE to_dormant_value_raw
-    END AS to_dormant_value,
-    CASE
-      WHEN to_dormant_value_raw IS NULL THEN NULL
-      ELSE coalesce(to_dormant_asset_raw, asset)
+      WHEN to_value_token IS NULL THEN NULL
+      WHEN to_tail_raw IS NULL THEN asset
+      ELSE upper(to_tail_raw)
     END AS to_dormant_asset,
 
     CASE
       WHEN transfer_label IS NULL THEN 'unlabeled'
-      WHEN tx_asset_without_value THEN 'malformed'
-      WHEN tx_label_actions IS NOT NULL OR tx_label_counterparty_raw IS NOT NULL OR tx_label_value_raw IS NOT NULL THEN 'parsed'
+      WHEN tx_paren_body IS NOT NULL AND tx_value_token IS NULL THEN 'malformed'
+      WHEN tx_label_actions IS NOT NULL OR (tx_label_counterparty_raw IS NOT NULL AND regexp_matches(tx_label_counterparty_raw, '[A-Za-z]')) OR try_cast(replace(tx_value_token, ',', '') AS DOUBLE) IS NOT NULL THEN
+        CASE
+          WHEN tx_value_token IS NOT NULL AND tx_tail_raw IS NULL THEN 'parsed_inferred_asset'
+          ELSE 'parsed'
+        END
       ELSE 'malformed'
     END AS tx_label_status,
     CASE
       WHEN from_label IS NULL THEN 'unlabeled'
-      WHEN from_asset_without_value THEN 'malformed'
-      WHEN from_types IS NOT NULL OR from_counterparty_raw IS NOT NULL OR from_dormant_value_raw IS NOT NULL THEN 'parsed'
+      WHEN from_paren_body IS NOT NULL AND from_value_token IS NULL THEN 'malformed'
+      WHEN from_types IS NOT NULL OR (from_counterparty_raw IS NOT NULL AND regexp_matches(from_counterparty_raw, '[A-Za-z]')) OR try_cast(replace(from_value_token, ',', '') AS DOUBLE) IS NOT NULL THEN
+        CASE
+          WHEN from_value_token IS NOT NULL AND from_tail_raw IS NULL THEN 'parsed_inferred_asset'
+          ELSE 'parsed'
+        END
       ELSE 'malformed'
     END AS from_label_status,
     CASE
       WHEN to_label IS NULL THEN 'unlabeled'
-      WHEN to_asset_without_value THEN 'malformed'
-      WHEN to_types IS NOT NULL OR to_counterparty_raw IS NOT NULL OR to_dormant_value_raw IS NOT NULL THEN 'parsed'
+      WHEN to_paren_body IS NOT NULL AND to_value_token IS NULL THEN 'malformed'
+      WHEN to_types IS NOT NULL OR (to_counterparty_raw IS NOT NULL AND regexp_matches(to_counterparty_raw, '[A-Za-z]')) OR try_cast(replace(to_value_token, ',', '') AS DOUBLE) IS NOT NULL THEN
+        CASE
+          WHEN to_value_token IS NOT NULL AND to_tail_raw IS NULL THEN 'parsed_inferred_asset'
+          ELSE 'parsed'
+        END
       ELSE 'malformed'
     END AS to_label_status,
 
     CASE
-      WHEN ts IS NULL THEN 'missing_or_unparsed'
+      WHEN ts IS NULL THEN 'missing'
       ELSE 'parsed'
     END AS time_status,
     CASE
-      WHEN amount_value IS NULL THEN 'missing'
+      WHEN amount_value IS NULL THEN 'missing_value'
       WHEN asset IS NULL THEN 'missing_asset'
       ELSE 'parsed'
     END AS amount_status,
     CASE
-      WHEN amount_usd_value IS NULL AND asset IN (SELECT asset FROM v_stablecoins) THEN 'inferred_from_stablecoin'
       WHEN amount_usd_value IS NULL THEN 'missing'
       ELSE 'parsed'
     END AS usd_status,
 
-    regexp_matches(coalesce(tx_label_actions, ''), '(^|[/\\])THEFT($|[/\\])', 'i') AS tx_is_theft,
-    regexp_matches(coalesce(tx_label_actions, ''), '(^|[/\\])CC:[0-9]+:(IN|OUT)($|[/\\])', 'i') AS tx_is_cross_chain,
-    try_cast(regexp_extract(coalesce(tx_label_actions, ''), '(^|[/\\])CC:([0-9]+):(IN|OUT)($|[/\\])', 2) AS INTEGER) AS tx_cc_id,
-    upper(nullif(regexp_extract(coalesce(tx_label_actions, ''), '(^|[/\\])CC:([0-9]+):(IN|OUT)($|[/\\])', 3), '')) AS tx_cc_direction
+    regexp_matches(lower(coalesce(tx_label_actions, '')), '(^|[/\\])theft($|[/\\])') AS tx_is_theft,
+    regexp_matches(lower(coalesce(tx_label_actions, '')), '(^|[/\\])cc:[0-9]+:(in|out)($|[/\\])') AS tx_is_cross_chain,
+    try_cast(regexp_extract(lower(coalesce(tx_label_actions, '')), '(^|[/\\])cc:([0-9]+):(in|out)($|[/\\])', 2) AS INTEGER) AS tx_cc_id,
+    upper(nullif(regexp_extract(lower(coalesce(tx_label_actions, '')), '(^|[/\\])cc:([0-9]+):(in|out)($|[/\\])', 3), '')) AS tx_cc_direction
   FROM measured
+), eligible AS (
+  SELECT
+    *,
+    CASE
+      WHEN tx_is_cross_chain AND format = 'qlue_utxo' THEN lower(coalesce(tx_cc_direction, ''))
+      WHEN tx_is_cross_chain THEN 'transaction'
+      ELSE NULL
+    END AS cc_match_side,
+    CASE
+      WHEN NOT tx_is_cross_chain THEN FALSE
+      WHEN format = 'qlue_utxo' THEN lower(coalesce(direction, '')) = lower(coalesce(tx_cc_direction, ''))
+      ELSE TRUE
+    END AS cc_match_eligible
+  FROM normalized
 ), theft_transactions AS (
   SELECT
     tx_hash,
     row_number() OVER (ORDER BY min(ts) NULLS LAST, tx_hash) AS theft_id
-  FROM normalized
+  FROM eligible
   WHERE tx_is_theft
     AND tx_hash IS NOT NULL
   GROUP BY tx_hash
 ), final AS (
   SELECT
-    n.vendor,
-    n.format,
-    n.chain,
-    n.ts,
-    n.tx_hash,
-    n.from_address,
-    n.to_address,
-    n.from_label,
-    n.to_label,
-    n.address_label,
-    n.direction,
-    n.asset,
-    n.amount_value,
-    n.amount_usd_value,
-    n.transfer_label,
+    e.vendor,
+    e.format,
+    e.chain,
+    e.ts,
+    e.tx_hash,
+    e.from_address,
+    e.to_address,
+    e.from_label,
+    e.to_label,
+    e.address_label,
+    e.direction,
+    e.asset,
+    e.amount_value,
+    e.amount_usd_value,
+    e.transfer_label,
     t.theft_id,
     CASE
-      WHEN n.amount_value IS NULL THEN n.tx_label_value
-      WHEN n.tx_label_value IS NULL THEN n.amount_value
-      ELSE LEAST(n.amount_value, n.tx_label_value)
+      WHEN e.amount_value IS NULL THEN e.tx_label_value
+      WHEN e.tx_label_value IS NULL THEN e.amount_value
+      ELSE LEAST(e.amount_value, e.tx_label_value)
     END AS stolen_amount_value,
-    n.source_file,
-    n.tx_label_actions,
-    n.tx_label_counterparty,
-    n.tx_label_value,
-    n.tx_label_asset,
-    n.tx_label_status,
-    n.from_types,
-    n.from_counterparty,
-    n.from_dormant_value,
-    n.from_dormant_asset,
-    n.from_label_status,
-    n.to_types,
-    n.to_counterparty,
-    n.to_dormant_value,
-    n.to_dormant_asset,
-    n.to_label_status,
-    n.tx_is_theft,
-    n.tx_is_cross_chain,
-    n.tx_cc_id,
-    n.tx_cc_direction,
-    n.time_status,
-    n.amount_status,
-    n.usd_status
-  FROM normalized n
+    e.source_file,
+    e.tx_label_actions,
+    e.tx_label_counterparty,
+    e.tx_label_value,
+    e.tx_label_asset,
+    e.tx_label_status,
+    e.from_types,
+    e.from_counterparty,
+    e.from_dormant_value,
+    e.from_dormant_asset,
+    e.from_label_status,
+    e.to_types,
+    e.to_counterparty,
+    e.to_dormant_value,
+    e.to_dormant_asset,
+    e.to_label_status,
+    e.tx_is_theft,
+    e.tx_is_cross_chain,
+    e.tx_cc_id,
+    e.tx_cc_direction,
+    e.cc_match_side,
+    e.cc_match_eligible,
+    e.time_status,
+    e.amount_status,
+    e.usd_status
+  FROM eligible e
   LEFT JOIN theft_transactions t USING (tx_hash)
 )
 SELECT
@@ -269,60 +268,153 @@ SELECT * FROM v_transfers;
 CREATE OR REPLACE VIEW v_normalized_transactions AS
 SELECT * FROM normalized_combined_transactions;
 
-CREATE OR REPLACE VIEW v_cross_chain_pairs AS
-WITH cc AS (
+CREATE OR REPLACE VIEW v_cross_chain_conflicts AS
+WITH cc_rows AS (
   SELECT *
   FROM transactions
   WHERE tx_is_cross_chain
     AND tx_cc_id IS NOT NULL
-), cc_in AS (
-  SELECT * FROM cc WHERE tx_cc_direction = 'IN'
-), cc_out AS (
-  SELECT * FROM cc WHERE tx_cc_direction = 'OUT'
+), conflicts AS (
+  SELECT
+    tx_hash,
+    count(*) AS cc_row_count,
+    count(*) FILTER (WHERE cc_match_eligible) AS eligible_row_count,
+    count(DISTINCT tx_cc_id) AS cc_id_count,
+    count(DISTINCT tx_cc_direction) AS cc_direction_count,
+    min(tx_cc_id) AS min_cc_id,
+    max(tx_cc_id) AS max_cc_id,
+    min(tx_cc_direction) AS min_cc_direction,
+    max(tx_cc_direction) AS max_cc_direction
+  FROM cc_rows
+  GROUP BY tx_hash
 )
 SELECT
-  coalesce(i.tx_cc_id, o.tx_cc_id) AS tx_cc_id,
-  i.tx_hash        AS in_tx_hash,
-  i.chain          AS in_chain,
-  i.asset          AS in_asset,
-  i.amount_value   AS in_amount_value,
+  *,
+  CASE
+    WHEN cc_id_count > 1 THEN 'multiple_cc_ids_per_tx_hash'
+    WHEN cc_direction_count > 1 THEN 'multiple_cc_directions_per_tx_hash'
+    WHEN eligible_row_count = 0 THEN 'no_eligible_cc_rows'
+    ELSE 'ok'
+  END AS cc_conflict_status
+FROM conflicts
+WHERE cc_id_count > 1
+   OR cc_direction_count > 1
+   OR eligible_row_count = 0;
+
+CREATE OR REPLACE VIEW v_cross_chain_tx_legs AS
+WITH cc_rows AS (
+  SELECT *
+  FROM transactions
+  WHERE tx_is_cross_chain
+    AND tx_cc_id IS NOT NULL
+), conflicts AS (
+  SELECT tx_hash
+  FROM v_cross_chain_conflicts
+), eligible_rows AS (
+  SELECT *
+  FROM cc_rows
+  WHERE cc_match_eligible
+    AND tx_hash NOT IN (SELECT tx_hash FROM conflicts)
+)
+SELECT
+  tx_cc_id,
+  tx_cc_direction,
+  tx_hash,
+  min(ts) AS ts,
+  min(chain) AS chain,
+  min(format) AS format,
+  min(tx_label_counterparty) AS tx_label_counterparty,
+  max(tx_label_value) AS tx_label_value,
+  max(tx_label_asset) AS tx_label_asset,
+  min(cc_match_side) AS cc_match_side,
+  count(*) AS eligible_transfer_rows,
+  sum(coalesce(amount_value, 0)) AS cc_match_amount_value,
+  CASE
+    WHEN count(*) FILTER (WHERE amount_usd_value IS NOT NULL) = 0 THEN NULL
+    ELSE sum(coalesce(amount_usd_value, 0))
+  END AS cc_match_amount_usd_value,
+  min(asset) AS asset_example
+FROM eligible_rows
+GROUP BY tx_cc_id, tx_cc_direction, tx_hash;
+
+CREATE OR REPLACE VIEW v_cross_chain_pairs AS
+WITH legs AS (
+  SELECT * FROM v_cross_chain_tx_legs
+), side_counts AS (
+  SELECT
+    tx_cc_id,
+    count(*) FILTER (WHERE tx_cc_direction = 'IN') AS in_tx_count,
+    count(*) FILTER (WHERE tx_cc_direction = 'OUT') AS out_tx_count
+  FROM legs
+  GROUP BY tx_cc_id
+), in_legs AS (
+  SELECT * FROM legs WHERE tx_cc_direction = 'IN'
+), out_legs AS (
+  SELECT * FROM legs WHERE tx_cc_direction = 'OUT'
+)
+SELECT
+  s.tx_cc_id,
+  s.in_tx_count,
+  s.out_tx_count,
+  i.tx_hash AS in_tx_hash,
+  i.chain AS in_chain,
+  i.asset_example AS in_asset,
+  i.cc_match_amount_value AS in_amount_value,
+  i.cc_match_amount_usd_value AS in_amount_usd_value,
   i.tx_label_value AS in_label_value,
   i.tx_label_asset AS in_label_asset,
-  i.ts             AS in_ts,
-  o.tx_hash        AS out_tx_hash,
-  o.chain          AS out_chain,
-  o.asset          AS out_asset,
-  o.amount_value   AS out_amount_value,
+  i.tx_label_counterparty AS in_counterparty,
+  i.cc_match_side AS in_match_side,
+  i.eligible_transfer_rows AS in_transfer_rows,
+  i.ts AS in_ts,
+  o.tx_hash AS out_tx_hash,
+  o.chain AS out_chain,
+  o.asset_example AS out_asset,
+  o.cc_match_amount_value AS out_amount_value,
+  o.cc_match_amount_usd_value AS out_amount_usd_value,
   o.tx_label_value AS out_label_value,
   o.tx_label_asset AS out_label_asset,
-  o.ts             AS out_ts,
+  o.tx_label_counterparty AS out_counterparty,
+  o.cc_match_side AS out_match_side,
+  o.eligible_transfer_rows AS out_transfer_rows,
+  o.ts AS out_ts,
   CASE
-    WHEN i.tx_hash IS NULL THEN 'missing_in'
-    WHEN o.tx_hash IS NULL THEN 'missing_out'
+    WHEN s.in_tx_count = 0 THEN 'missing_in'
+    WHEN s.out_tx_count = 0 THEN 'missing_out'
+    WHEN s.in_tx_count > 1 AND s.out_tx_count > 1 THEN 'duplicate_in_and_out'
+    WHEN s.in_tx_count > 1 THEN 'duplicate_in'
+    WHEN s.out_tx_count > 1 THEN 'duplicate_out'
     ELSE 'paired'
   END AS cc_pair_status
-FROM cc_in i
-FULL OUTER JOIN cc_out o
-  ON i.tx_cc_id = o.tx_cc_id;
+FROM side_counts s
+LEFT JOIN in_legs i ON s.tx_cc_id = i.tx_cc_id AND s.in_tx_count = 1
+LEFT JOIN out_legs o ON s.tx_cc_id = o.tx_cc_id AND s.out_tx_count = 1;
 
 CREATE OR REPLACE VIEW v_issue_rows AS
+WITH cc_conflicts AS (
+  SELECT tx_hash, cc_conflict_status FROM v_cross_chain_conflicts
+)
 SELECT
-  *,
+  t.*,
+  cc.cc_conflict_status,
   trim(
     both '|' FROM concat(
-      CASE WHEN tx_label_status   = 'malformed'         THEN 'tx_label_malformed|'            ELSE '' END,
-      CASE WHEN from_label_status = 'malformed'         THEN 'from_label_malformed|'          ELSE '' END,
-      CASE WHEN to_label_status   = 'malformed'         THEN 'to_label_malformed|'            ELSE '' END,
-      CASE WHEN time_status      <> 'parsed'            THEN 'time_issue|'                    ELSE '' END,
-      CASE WHEN amount_status    <> 'parsed'            THEN 'amount_issue|'                  ELSE '' END,
-      CASE WHEN tx_label_value IS NOT NULL AND amount_value IS NOT NULL AND tx_label_value > amount_value
-                                                     THEN 'label_value_exceeds_amount|'       ELSE '' END
+      CASE WHEN tx_label_status = 'malformed' THEN 'tx_label_malformed|' ELSE '' END,
+      CASE WHEN from_label_status = 'malformed' THEN 'from_label_malformed|' ELSE '' END,
+      CASE WHEN to_label_status = 'malformed' THEN 'to_label_malformed|' ELSE '' END,
+      CASE WHEN time_status <> 'parsed' THEN 'time_issue|' ELSE '' END,
+      CASE WHEN amount_status <> 'parsed' THEN 'amount_issue|' ELSE '' END,
+      CASE WHEN tx_label_value IS NOT NULL AND amount_value IS NOT NULL AND tx_label_value > amount_value AND (NOT tx_is_cross_chain OR cc_match_eligible)
+        THEN 'label_value_exceeds_amount|' ELSE '' END,
+      CASE WHEN cc.cc_conflict_status IS NOT NULL THEN 'cross_chain_conflict|' ELSE '' END
     )
   ) AS issue_flags
-FROM transactions
+FROM transactions t
+LEFT JOIN cc_conflicts cc USING (tx_hash)
 WHERE tx_label_status = 'malformed'
    OR from_label_status = 'malformed'
    OR to_label_status = 'malformed'
    OR time_status <> 'parsed'
    OR amount_status <> 'parsed'
-   OR (tx_label_value IS NOT NULL AND amount_value IS NOT NULL AND tx_label_value > amount_value);
+   OR (tx_label_value IS NOT NULL AND amount_value IS NOT NULL AND tx_label_value > amount_value AND (NOT tx_is_cross_chain OR cc_match_eligible))
+   OR cc.cc_conflict_status IS NOT NULL;

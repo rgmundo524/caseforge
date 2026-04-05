@@ -2,10 +2,8 @@ with service_da as (
   select
     ts,
     tx_hash,
+    direction,
     to_counterparty as service,
-    transfer_label,
-    tx_label_actions,
-    tx_label_counterparty,
     from_label,
     from_address,
     to_label,
@@ -15,15 +13,12 @@ with service_da as (
     stolen_amount_value,
     amount_usd_value,
     stolen_amount_usd_value,
-    theft_id,
-    tx_is_theft,
-    tx_is_cross_chain,
-    tx_cc_id,
-    tx_cc_direction
+    transfer_label,
+    theft_id
   from transactions
-  where regexp_matches(upper(coalesce(to_types, '')), '(^|[/\,;: ])DA($|[/\,;: ])')
+  where regexp_matches(coalesce(to_types, ''), '(^|[/\\])DA($|[/\\])', 'i')
 )
 select *
 from service_da
-order by ts desc, tx_hash
+order by ts desc, tx_hash, direction nulls first
 limit 100;

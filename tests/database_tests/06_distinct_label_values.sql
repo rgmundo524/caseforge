@@ -1,4 +1,3 @@
--- File: 06_distinct_label_values.sql
 select distinct
   transfer_label,
   tx_label_actions,

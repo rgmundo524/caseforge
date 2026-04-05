@@ -27,14 +27,13 @@ NORMALIZED_COLUMNS = [
     "destination_label",
     "destination_group",
     "destination_group_description",
+    "direction",
     "asset",
     "value",
     "usd",
 ]
 
 REQUIRED_HEADERS = {
-    # Keep validation strict enough to prevent wrong export wiring, but only require
-    # columns that are actually consumed by the normalizer SQL.
     "trm": {
         "Type",
         "Chain",
@@ -142,7 +141,7 @@ def _load_stablecoin_assets() -> list[str]:
 
 def _stablecoins_view_sql(assets: list[str]) -> str:
     values_sql = ",\n      ".join(
-        f"('{asset.replace("'", "''")}')" for asset in assets
+        "('" + asset.replace("'", "''") + "')" for asset in assets
     )
     return (
         "CREATE OR REPLACE VIEW v_stablecoins AS\n"
@@ -340,6 +339,7 @@ def normalize_db(*, case_root: Path, duckdb_bin: str = "duckdb") -> None:
       destination_label VARCHAR,
       destination_group VARCHAR,
       destination_group_description VARCHAR,
+      direction VARCHAR,
       asset VARCHAR,
       value DOUBLE,
       usd DOUBLE

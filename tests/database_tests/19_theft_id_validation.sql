@@ -1,16 +1,11 @@
--- File: 19_theft_id_validation.sql
 select
   theft_id,
-  ts,
   tx_hash,
-  transfer_label,
-  tx_label_actions,
-  tx_label_counterparty,
-  tx_label_value,
-  tx_label_asset,
-  tx_is_theft,
-  count(*) over (partition by tx_hash) as rows_for_tx_hash
+  count(*) as transfer_rows_for_tx,
+  min(ts) as first_ts,
+  max(ts) as last_ts,
+  min(transfer_label) as example_transfer_label
 from transactions
-where tx_is_theft
-   or theft_id is not null
-order by theft_id, ts, tx_hash;
+where theft_id is not null
+group by theft_id, tx_hash
+order by theft_id, first_ts, tx_hash;

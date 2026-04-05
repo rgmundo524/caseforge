@@ -5,8 +5,8 @@ sidebar_position: 1
 
 # Appendix
 
-## Related Transactions Details
-The following is a complete list of blockchain transactions involved in this investigation.
+## Related Transfer Details
+Each row below is a **transfer leg**. Multiple rows can share the same transaction hash when a single blockchain transaction contains multiple transfers or multiple UTXO inputs/outputs.
 
 ```sql chains
 select 'all' as value, 'All' as label
@@ -39,6 +39,9 @@ select
   tx_label_asset,
   tx_label_status,
   ts,
+  direction,
+  cc_match_side,
+  cc_match_eligible,
   from_label,
   from_types,
   from_counterparty,
@@ -70,10 +73,10 @@ from "case".transactions
 where
   '${inputs.chain_filter.value}' = 'all'
   or lower(chain) = '${inputs.chain_filter.value}'
-order by ts nulls last, tx_hash;
+order by ts nulls last, tx_hash, direction nulls first, from_address, to_address;
 ```
 
-<DataTable data={transfers_by_chain} title="Transactions by Blockchain" subtitle="Filtered by Chain" search download rows=20 rowNumbers rowLines rowShading>
+<DataTable data={transfers_by_chain} title="Transfer Legs by Blockchain" subtitle="Filtered by Chain" search download rows=20 rowNumbers rowLines rowShading>
   <Column id=chain title="Blockchain" />
   <Column id=tx_hash title="Transaction Hash" />
   <Column id=transfer_label title="Transaction Label" />
@@ -83,6 +86,9 @@ order by ts nulls last, tx_hash;
   <Column id=tx_label_asset title="Tx Label Asset" />
   <Column id=tx_label_status title="Tx Label Status" />
   <Column id=ts title="Date/Time" />
+  <Column id=direction title="Direction" />
+  <Column id=cc_match_side title="CC Match Side" />
+  <Column id=cc_match_eligible title="CC Match Eligible" />
   <Column id=from_label title="Sender Label" />
   <Column id=from_types title="Sender Types" />
   <Column id=from_counterparty title="Sender Counterparty" />
@@ -112,9 +118,9 @@ order by ts nulls last, tx_hash;
   <Column id=source_file title="Source File" />
 </DataTable>
 
-## Service Deposit Address Transactions
+## Service Deposit Address Transfers
 
-This table shows transactions where the recipient label contains the `DA` type code. Use the recipient service dropdown to narrow the results to a single service.
+This table shows transfer legs where the recipient label contains the `DA` type code.
 
 ```sql recipient_services
 with services as (
@@ -147,11 +153,12 @@ order by label;
   defaultValue="all"
 />
 
-```sql service_deposit_address_transactions_table
+```sql service_deposit_address_transfers_table
 select
   ts as time,
-  transfer_label,
   tx_hash as transaction,
+  direction,
+  transfer_label,
   tx_label_actions,
   tx_label_counterparty,
   from_label as source_address_label,
@@ -177,13 +184,14 @@ where
     '${inputs.service_filter.value}' = 'all'
     or lower(to_counterparty) = '${inputs.service_filter.value}'
   )
-order by time asc;
+order by time asc, transaction;
 ```
 
-<DataTable data={service_deposit_address_transactions_table} title="Service Deposit Address Transactions" subtitle="Filtered by Chain and Recipient Service" search download rows=20 rowNumbers rowLines rowShading>
+<DataTable data={service_deposit_address_transfers_table} title="Service Deposit Address Transfers" subtitle="Filtered by Chain and Recipient Service" search download rows=20 rowNumbers rowLines rowShading>
   <Column id=time title="Date/Time" />
-  <Column id=transfer_label title="Transaction Label" />
   <Column id=transaction title="Transaction Hash" />
+  <Column id=direction title="Direction" />
+  <Column id=transfer_label title="Transaction Label" />
   <Column id=tx_label_actions title="Actions" />
   <Column id=tx_label_counterparty title="Tx Counterparty" />
   <Column id=source_address_label title="Sender Label" />
@@ -199,27 +207,78 @@ order by time asc;
   <Column id=source_file title="Source File" />
 </DataTable>
 
+## Cross-Chain Transaction Legs
+
+This table shows the transaction-level cross-chain legs that are actually eligible for matching. For UTXO chains, only the labeled input side or output side is aggregated.
+
+```sql cross_chain_tx_legs
+select
+  tx_cc_id,
+  tx_cc_direction,
+  tx_hash,
+  chain,
+  format,
+  cc_match_side,
+  eligible_transfer_rows,
+  cc_match_amount_value,
+  cc_match_amount_usd_value,
+  asset_example,
+  tx_label_counterparty,
+  tx_label_value,
+  tx_label_asset,
+  ts
+from "case".v_cross_chain_tx_legs
+order by tx_cc_id, tx_cc_direction, ts;
+```
+
+<DataTable data={cross_chain_tx_legs} title="Cross-Chain Transaction Legs" search download rows=20 rowNumbers rowLines rowShading>
+  <Column id=tx_cc_id title="CC Group" />
+  <Column id=tx_cc_direction title="CC Direction" />
+  <Column id=tx_hash title="Transaction Hash" />
+  <Column id=chain title="Chain" />
+  <Column id=format title="Format" />
+  <Column id=cc_match_side title="Match Side" />
+  <Column id=eligible_transfer_rows title="Eligible Rows" />
+  <Column id=cc_match_amount_value title="Matched Value" />
+  <Column id=cc_match_amount_usd_value title="Matched USD Value" fmt=usd />
+  <Column id=asset_example title="Asset" />
+  <Column id=tx_label_counterparty title="Counterparty" />
+  <Column id=tx_label_value title="Label Value" />
+  <Column id=tx_label_asset title="Label Asset" />
+  <Column id=ts title="Time" />
+</DataTable>
+
 ## Cross-Chain Pairing
 
-This table pairs `CC:{id}:IN` rows with `CC:{id}:OUT` rows so the investigation can quickly identify matched and missing bridge legs.
+This table pairs `CC:{id}:IN` and `CC:{id}:OUT` transaction legs.
 
 ```sql cross_chain_pairs
 select
   tx_cc_id,
   cc_pair_status,
+  in_tx_count,
+  out_tx_count,
   in_tx_hash,
   in_chain,
   in_asset,
   in_amount_value,
+  in_amount_usd_value,
   in_label_value,
   in_label_asset,
+  in_counterparty,
+  in_match_side,
+  in_transfer_rows,
   in_ts,
   out_tx_hash,
   out_chain,
   out_asset,
   out_amount_value,
+  out_amount_usd_value,
   out_label_value,
   out_label_asset,
+  out_counterparty,
+  out_match_side,
+  out_transfer_rows,
   out_ts
 from "case".v_cross_chain_pairs
 order by tx_cc_id;
@@ -228,50 +287,58 @@ order by tx_cc_id;
 <DataTable data={cross_chain_pairs} title="Cross-Chain Pairing" search download rows=20 rowNumbers rowLines rowShading>
   <Column id=tx_cc_id title="CC Group" />
   <Column id=cc_pair_status title="Pair Status" />
+  <Column id=in_tx_count title="IN Tx Count" />
+  <Column id=out_tx_count title="OUT Tx Count" />
   <Column id=in_tx_hash title="Input Tx Hash" />
   <Column id=in_chain title="Input Chain" />
   <Column id=in_asset title="Input Asset" />
   <Column id=in_amount_value title="Input Amount" />
+  <Column id=in_amount_usd_value title="Input USD" fmt=usd />
   <Column id=in_label_value title="Input Label Value" />
   <Column id=in_label_asset title="Input Label Asset" />
+  <Column id=in_counterparty title="Input Counterparty" />
+  <Column id=in_match_side title="Input Match Side" />
+  <Column id=in_transfer_rows title="Input Rows" />
   <Column id=in_ts title="Input Time" />
   <Column id=out_tx_hash title="Output Tx Hash" />
   <Column id=out_chain title="Output Chain" />
   <Column id=out_asset title="Output Asset" />
   <Column id=out_amount_value title="Output Amount" />
+  <Column id=out_amount_usd_value title="Output USD" fmt=usd />
   <Column id=out_label_value title="Output Label Value" />
   <Column id=out_label_asset title="Output Label Asset" />
+  <Column id=out_counterparty title="Output Counterparty" />
+  <Column id=out_match_side title="Output Match Side" />
+  <Column id=out_transfer_rows title="Output Rows" />
   <Column id=out_ts title="Output Time" />
 </DataTable>
 
 ## Rows Needing Review
 
-These are rows where parsing or normalization produced an issue status. This should help investigators and operators identify malformed labels, missing timestamps, or suspicious value conditions quickly.
+These are transfer legs where parsing or cross-chain validation produced an issue status.
 
 ```sql issue_rows
 select
   ts,
   chain,
   tx_hash,
+  direction,
   transfer_label,
   from_label,
   to_label,
   asset,
   amount_value,
-  tx_label_value,
-  tx_label_asset,
+  amount_usd_value,
   tx_label_status,
   from_label_status,
   to_label_status,
-  time_status,
-  amount_status,
-  usd_status,
+  tx_cc_id,
+  tx_cc_direction,
+  cc_match_eligible,
+  cc_conflict_status,
   issue_flags,
   source_file
 from "case".v_issue_rows
-where
-  '${inputs.chain_filter.value}' = 'all'
-  or lower(chain) = '${inputs.chain_filter.value}'
 order by ts nulls last, tx_hash;
 ```
 
@@ -279,19 +346,20 @@ order by ts nulls last, tx_hash;
   <Column id=ts title="Date/Time" />
   <Column id=chain title="Chain" />
   <Column id=tx_hash title="Transaction Hash" />
+  <Column id=direction title="Direction" />
   <Column id=transfer_label title="Transaction Label" />
   <Column id=from_label title="Sender Label" />
   <Column id=to_label title="Recipient Label" />
   <Column id=asset title="Asset" />
-  <Column id=amount_value title="Transfer Value" />
-  <Column id=tx_label_value title="Label Value" />
-  <Column id=tx_label_asset title="Label Asset" />
+  <Column id=amount_value title="Value" />
+  <Column id=amount_usd_value title="USD Value" fmt=usd />
   <Column id=tx_label_status title="Tx Label Status" />
   <Column id=from_label_status title="Sender Label Status" />
   <Column id=to_label_status title="Recipient Label Status" />
-  <Column id=time_status title="Time Status" />
-  <Column id=amount_status title="Amount Status" />
-  <Column id=usd_status title="USD Status" />
+  <Column id=tx_cc_id title="CC Group" />
+  <Column id=tx_cc_direction title="CC Direction" />
+  <Column id=cc_match_eligible title="CC Match Eligible" />
+  <Column id=cc_conflict_status title="CC Conflict Status" />
   <Column id=issue_flags title="Issue Flags" />
   <Column id=source_file title="Source File" />
 </DataTable>

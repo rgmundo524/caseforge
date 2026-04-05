@@ -1,24 +1,16 @@
 select
   ts,
   tx_hash,
-  transfer_label,
-  tx_label_actions,
+  direction,
   from_label,
   from_types,
-  from_counterparty,
-  from_address,
   to_label,
   to_types,
-  to_counterparty,
-  to_address,
   asset,
   amount_value,
-  stolen_amount_value,
-  amount_usd_value,
-  stolen_amount_usd_value,
-  theft_id
+  transfer_label
 from transactions
-where regexp_matches(upper(coalesce(from_types, '')), '(^|[/\,;: ])TA($|[/\,;: ])')
-   or regexp_matches(upper(coalesce(to_types, '')), '(^|[/\,;: ])TA($|[/\,;: ])')
-order by ts desc, tx_hash
+where regexp_matches(coalesce(from_types, ''), '(^|[/\\])TA($|[/\\])', 'i')
+   or regexp_matches(coalesce(to_types, ''), '(^|[/\\])TA($|[/\\])', 'i')
+order by ts desc, tx_hash, direction nulls first
 limit 100;
