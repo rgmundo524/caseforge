@@ -6,14 +6,14 @@ WITH base AS (
     '{{SOURCE_FILE}}' AS source_file,
     '{{BLOCKCHAIN}}' AS blockchain,
     NULLIF(trim(cast("Time" AS VARCHAR)), '') AS time_raw,
-    NULLIF(trim(cast("Transaction Hash" AS VARCHAR)), '') AS tx,
+    NULLIF(trim(replace(cast("Transaction Hash" AS VARCHAR), '"', '')), '') AS tx,
     NULLIF(trim(regexp_replace(replace(coalesce(cast("Transaction Label" AS VARCHAR), ''), '"', ''), '\s+', ' ', 'g')), '') AS tx_label,
     CASE
       WHEN lower(trim(cast("Direction" AS VARCHAR))) IN ('in', 'input', 'incoming') THEN 'in'
       WHEN lower(trim(cast("Direction" AS VARCHAR))) IN ('out', 'output', 'outgoing') THEN 'out'
       ELSE NULL
     END AS direction,
-    NULLIF(trim(cast("Address Hash" AS VARCHAR)), '') AS address_hash,
+    NULLIF(trim(replace(cast("Address Hash" AS VARCHAR), '"', '')), '') AS address_hash,
     NULLIF(trim(regexp_replace(replace(coalesce(cast("Address Label" AS VARCHAR), ''), '"', ''), '\s+', ' ', 'g')), '') AS address_label,
     NULLIF(trim(cast("Source Group" AS VARCHAR)), '') AS source_group_raw,
     NULLIF(trim(cast("Source Group Description" AS VARCHAR)), '') AS source_group_description_raw,
@@ -50,7 +50,7 @@ WITH base AS (
     ) AS row_asset,
     try_cast(replace(replace(NULLIF(trim(cast("USD" AS VARCHAR)), ''), ',', ''), '$', '') AS DOUBLE) AS usd_raw
   FROM {{RAW_TABLE}}
-  WHERE NULLIF(trim(cast("Transaction Hash" AS VARCHAR)), '') IS NOT NULL
+  WHERE NULLIF(trim(replace(cast("Transaction Hash" AS VARCHAR), '"', '')), '') IS NOT NULL
 ), typed AS (
   SELECT
     *,

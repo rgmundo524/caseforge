@@ -80,7 +80,13 @@ WITH base AS (
 
     nullif(trim(regexp_extract(transfer_label_clean, '\(([^)]*)\)\s*$', 1)), '') AS tx_paren_body,
     nullif(trim(regexp_extract(from_label_clean, '\(([^)]*)\)\s*$', 1)), '') AS from_paren_body,
-    nullif(trim(regexp_extract(to_label_clean, '\(([^)]*)\)\s*$', 1)), '') AS to_paren_body
+    nullif(trim(regexp_extract(to_label_clean, '\(([^)]*)\)\s*$', 1)), '') AS to_paren_body,
+
+    CASE
+      WHEN regexp_matches(transfer_label_clean, '^\s*[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)\s*$')
+        THEN nullif(trim(transfer_label_clean), '')
+      ELSE NULL
+    END AS tx_plain_numeric_token
   FROM labels
 ), measured AS (
   SELECT
@@ -92,7 +98,9 @@ WITH base AS (
     nullif(trim(regexp_replace(coalesce(from_paren_body, ''), '^\s*[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)\s*', '')), '') AS from_tail_raw,
 
     nullif(trim(regexp_extract(coalesce(to_paren_body, ''), '^\s*([-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+))', 1)), '') AS to_value_token,
-    nullif(trim(regexp_replace(coalesce(to_paren_body, ''), '^\s*[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)\s*', '')), '') AS to_tail_raw
+    nullif(trim(regexp_replace(coalesce(to_paren_body, ''), '^\s*[-+]?(?:[0-9][0-9,]*(?:\.[0-9]+)?|\.[0-9]+)\s*', '')), '') AS to_tail_raw,
+
+    try_cast(replace(tx_plain_numeric_token, ',', '') AS DOUBLE) AS tx_plain_numeric_value
   FROM parsed
 ), normalized AS (
   SELECT
@@ -110,11 +118,18 @@ WITH base AS (
       ELSE NULL
     END AS to_counterparty,
 
-    try_cast(replace(tx_value_token, ',', '') AS DOUBLE) AS tx_label_value,
+    coalesce(
+      try_cast(replace(tx_value_token, ',', '') AS DOUBLE),
+      tx_plain_numeric_value
+    ) AS tx_label_value,
     CASE
-      WHEN tx_value_token IS NULL THEN NULL
-      WHEN tx_tail_raw IS NULL THEN asset
-      ELSE upper(tx_tail_raw)
+      WHEN tx_value_token IS NOT NULL THEN
+        CASE
+          WHEN tx_tail_raw IS NULL THEN asset
+          ELSE upper(tx_tail_raw)
+        END
+      WHEN tx_plain_numeric_value IS NOT NULL THEN asset
+      ELSE NULL
     END AS tx_label_asset,
 
     try_cast(replace(from_value_token, ',', '') AS DOUBLE) AS from_dormant_value,
@@ -134,9 +149,12 @@ WITH base AS (
     CASE
       WHEN transfer_label IS NULL THEN 'unlabeled'
       WHEN tx_paren_body IS NOT NULL AND tx_value_token IS NULL THEN 'malformed'
-      WHEN tx_label_actions IS NOT NULL OR (tx_label_counterparty_raw IS NOT NULL AND regexp_matches(tx_label_counterparty_raw, '[A-Za-z]')) OR try_cast(replace(tx_value_token, ',', '') AS DOUBLE) IS NOT NULL THEN
+      WHEN tx_plain_numeric_value IS NOT NULL THEN 'parsed_inferred_asset'
+      WHEN tx_label_actions IS NOT NULL
+        OR (tx_label_counterparty_raw IS NOT NULL AND regexp_matches(tx_label_counterparty_raw, '[A-Za-z]'))
+        OR coalesce(try_cast(replace(tx_value_token, ',', '') AS DOUBLE), tx_plain_numeric_value) IS NOT NULL THEN
         CASE
-          WHEN tx_value_token IS NOT NULL AND tx_tail_raw IS NULL THEN 'parsed_inferred_asset'
+          WHEN (tx_value_token IS NOT NULL AND tx_tail_raw IS NULL) OR tx_plain_numeric_value IS NOT NULL THEN 'parsed_inferred_asset'
           ELSE 'parsed'
         END
       ELSE 'malformed'
@@ -195,11 +213,100 @@ WITH base AS (
       ELSE TRUE
     END AS cc_match_eligible
   FROM normalized
+), leg_context AS (
+  SELECT
+    *,
+    count(*) FILTER (WHERE lower(coalesce(direction, '')) = 'in') OVER (PARTITION BY tx_hash) AS tx_input_leg_count,
+    count(*) FILTER (WHERE lower(coalesce(direction, '')) = 'out') OVER (PARTITION BY tx_hash) AS tx_output_leg_count,
+    regexp_matches(lower(coalesce(tx_label_actions, '')), '(^|[/\\])d($|[/\\])') AS action_has_deposit,
+    regexp_matches(lower(coalesce(tx_label_actions, '')), '(^|[/\\])theft($|[/\\])') AS action_has_theft,
+    regexp_matches(lower(coalesce(tx_label_actions, '')), '(^|[/\\])w($|[/\\])') AS action_has_withdrawal,
+    regexp_matches(lower(coalesce(from_types, '')), '(^|[/\\])ve($|[/\\])') AS from_is_ve,
+    regexp_matches(lower(coalesce(to_types, '')), '(^|[/\\])da($|[/\\])') AS to_is_da,
+    regexp_matches(lower(coalesce(to_types, '')), '(^|[/\\])ta($|[/\\])') AS to_is_ta,
+    lower(trim(coalesce(tx_label_counterparty, ''))) AS tx_counterparty_norm,
+    lower(trim(coalesce(from_counterparty, ''))) AS from_counterparty_norm,
+    lower(trim(coalesce(to_counterparty, ''))) AS to_counterparty_norm,
+    lower(coalesce(from_label, '')) AS from_label_lower,
+    lower(coalesce(to_label, '')) AS to_label_lower
+  FROM eligible
+), leg_resolution AS (
+  SELECT
+    *,
+    CASE
+      WHEN format <> 'qlue_utxo' THEN TRUE
+      WHEN transfer_label IS NULL THEN TRUE
+      WHEN tx_is_cross_chain THEN cc_match_eligible
+      WHEN action_has_withdrawal AND lower(coalesce(direction, '')) = 'in' AND from_is_ve THEN TRUE
+      WHEN action_has_withdrawal AND lower(coalesce(direction, '')) = 'in'
+           AND tx_counterparty_norm <> ''
+           AND (from_counterparty_norm = tx_counterparty_norm OR strpos(from_label_lower, tx_counterparty_norm) > 0) THEN TRUE
+      WHEN action_has_withdrawal AND lower(coalesce(direction, '')) = 'in' AND tx_input_leg_count = 1 THEN TRUE
+      WHEN action_has_deposit AND lower(coalesce(direction, '')) = 'out' AND to_is_da THEN TRUE
+      WHEN action_has_theft AND lower(coalesce(direction, '')) = 'out' AND to_is_ta THEN TRUE
+      WHEN (action_has_deposit OR action_has_theft) AND lower(coalesce(direction, '')) = 'out'
+           AND tx_counterparty_norm <> ''
+           AND (to_counterparty_norm = tx_counterparty_norm OR strpos(to_label_lower, tx_counterparty_norm) > 0) THEN TRUE
+      WHEN (action_has_deposit OR action_has_theft) AND lower(coalesce(direction, '')) = 'out' AND tx_output_leg_count = 1 THEN TRUE
+      WHEN lower(coalesce(direction, '')) = 'out'
+           AND tx_counterparty_norm <> ''
+           AND (to_counterparty_norm = tx_counterparty_norm OR strpos(to_label_lower, tx_counterparty_norm) > 0) THEN TRUE
+      WHEN lower(coalesce(direction, '')) = 'out'
+           AND tx_counterparty_norm = ''
+           AND tx_output_leg_count = 1 THEN TRUE
+      WHEN lower(coalesce(direction, '')) = 'in'
+           AND tx_counterparty_norm <> ''
+           AND (from_counterparty_norm = tx_counterparty_norm OR strpos(from_label_lower, tx_counterparty_norm) > 0)
+           AND tx_output_leg_count = 0 THEN TRUE
+      WHEN lower(coalesce(direction, '')) = 'in'
+           AND tx_counterparty_norm = ''
+           AND tx_input_leg_count = 1
+           AND tx_output_leg_count = 0 THEN TRUE
+      ELSE FALSE
+    END AS tx_label_leg_applies,
+    CASE
+      WHEN format <> 'qlue_utxo' THEN 'account_row'
+      WHEN transfer_label IS NULL THEN 'unlabeled_row'
+      WHEN tx_is_cross_chain AND cc_match_eligible THEN 'cross_chain_side_match'
+      WHEN tx_is_cross_chain THEN 'cross_chain_other_side'
+      WHEN action_has_withdrawal AND lower(coalesce(direction, '')) = 'in' AND from_is_ve THEN 'withdrawal_from_service'
+      WHEN action_has_withdrawal AND lower(coalesce(direction, '')) = 'in'
+           AND tx_counterparty_norm <> ''
+           AND (from_counterparty_norm = tx_counterparty_norm OR strpos(from_label_lower, tx_counterparty_norm) > 0) THEN 'withdrawal_counterparty_match'
+      WHEN action_has_withdrawal AND lower(coalesce(direction, '')) = 'in' AND tx_input_leg_count = 1 THEN 'single_input_leg'
+      WHEN action_has_deposit AND lower(coalesce(direction, '')) = 'out' AND to_is_da THEN 'deposit_to_da'
+      WHEN action_has_theft AND lower(coalesce(direction, '')) = 'out' AND to_is_ta THEN 'theft_to_ta'
+      WHEN (action_has_deposit OR action_has_theft) AND lower(coalesce(direction, '')) = 'out'
+           AND tx_counterparty_norm <> ''
+           AND (to_counterparty_norm = tx_counterparty_norm OR strpos(to_label_lower, tx_counterparty_norm) > 0) THEN 'output_counterparty_match'
+      WHEN (action_has_deposit OR action_has_theft) AND lower(coalesce(direction, '')) = 'out' AND tx_output_leg_count = 1 THEN 'single_output_leg'
+      WHEN lower(coalesce(direction, '')) = 'out'
+           AND tx_counterparty_norm <> ''
+           AND (to_counterparty_norm = tx_counterparty_norm OR strpos(to_label_lower, tx_counterparty_norm) > 0) THEN 'output_counterparty_match'
+      WHEN lower(coalesce(direction, '')) = 'out'
+           AND tx_counterparty_norm = ''
+           AND tx_output_leg_count = 1 THEN 'single_output_leg'
+      WHEN lower(coalesce(direction, '')) = 'in'
+           AND tx_counterparty_norm <> ''
+           AND (from_counterparty_norm = tx_counterparty_norm OR strpos(from_label_lower, tx_counterparty_norm) > 0)
+           AND tx_output_leg_count = 0 THEN 'input_counterparty_match'
+      WHEN lower(coalesce(direction, '')) = 'in'
+           AND tx_counterparty_norm = ''
+           AND tx_input_leg_count = 1
+           AND tx_output_leg_count = 0 THEN 'single_input_leg'
+      ELSE 'no_leg_match'
+    END AS tx_label_leg_match_reason
+  FROM leg_context
+), applicable AS (
+  SELECT
+    *,
+    sum(CASE WHEN tx_label_leg_applies THEN 1 ELSE 0 END) OVER (PARTITION BY tx_hash) AS tx_label_applicable_leg_count
+  FROM leg_resolution
 ), theft_transactions AS (
   SELECT
     tx_hash,
     row_number() OVER (ORDER BY min(ts) NULLS LAST, tx_hash) AS theft_id
-  FROM eligible
+  FROM applicable
   WHERE tx_is_theft
     AND tx_hash IS NOT NULL
   GROUP BY tx_hash
@@ -222,9 +329,14 @@ WITH base AS (
     e.transfer_label,
     t.theft_id,
     CASE
-      WHEN e.amount_value IS NULL THEN e.tx_label_value
-      WHEN e.tx_label_value IS NULL THEN e.amount_value
-      ELSE LEAST(e.amount_value, e.tx_label_value)
+      WHEN e.tx_label_leg_applies THEN
+        CASE
+          WHEN e.amount_value IS NULL THEN e.tx_label_value
+          WHEN e.tx_label_value IS NULL THEN e.amount_value
+          ELSE LEAST(e.amount_value, e.tx_label_value)
+        END
+      WHEN e.transfer_label IS NULL THEN e.amount_value
+      ELSE 0
     END AS stolen_amount_value,
     e.source_file,
     e.tx_label_actions,
@@ -248,10 +360,15 @@ WITH base AS (
     e.tx_cc_direction,
     e.cc_match_side,
     e.cc_match_eligible,
+    e.tx_input_leg_count,
+    e.tx_output_leg_count,
+    e.tx_label_leg_applies,
+    e.tx_label_leg_match_reason,
+    e.tx_label_applicable_leg_count,
     e.time_status,
     e.amount_status,
     e.usd_status
-  FROM eligible e
+  FROM applicable e
   LEFT JOIN theft_transactions t USING (tx_hash)
 )
 SELECT
@@ -363,6 +480,8 @@ SELECT
   i.cc_match_amount_usd_value AS in_amount_usd_value,
   i.tx_label_value AS in_label_value,
   i.tx_label_asset AS in_label_asset,
+  coalesce(i.tx_label_value, i.cc_match_amount_value) AS in_effective_match_value,
+  coalesce(i.tx_label_asset, i.asset_example) AS in_effective_match_asset,
   i.tx_label_counterparty AS in_counterparty,
   i.cc_match_side AS in_match_side,
   i.eligible_transfer_rows AS in_transfer_rows,
@@ -374,6 +493,8 @@ SELECT
   o.cc_match_amount_usd_value AS out_amount_usd_value,
   o.tx_label_value AS out_label_value,
   o.tx_label_asset AS out_label_asset,
+  coalesce(o.tx_label_value, o.cc_match_amount_value) AS out_effective_match_value,
+  coalesce(o.tx_label_asset, o.asset_example) AS out_effective_match_asset,
   o.tx_label_counterparty AS out_counterparty,
   o.cc_match_side AS out_match_side,
   o.eligible_transfer_rows AS out_transfer_rows,
@@ -385,7 +506,17 @@ SELECT
     WHEN s.in_tx_count > 1 THEN 'duplicate_in'
     WHEN s.out_tx_count > 1 THEN 'duplicate_out'
     ELSE 'paired'
-  END AS cc_pair_status
+  END AS cc_pair_status,
+  CASE
+    WHEN i.ts IS NULL OR o.ts IS NULL THEN 'missing_timestamp'
+    WHEN o.ts < i.ts THEN 'out_before_in'
+    WHEN date_diff('minute', i.ts, o.ts) > 720 THEN 'delta_gt_12h'
+    ELSE 'ok'
+  END AS cc_timing_status,
+  CASE
+    WHEN i.ts IS NULL OR o.ts IS NULL THEN NULL
+    ELSE abs(date_diff('minute', i.ts, o.ts)) / 60.0
+  END AS cc_timing_delta_hours
 FROM side_counts s
 LEFT JOIN in_legs i ON s.tx_cc_id = i.tx_cc_id AND s.in_tx_count = 1
 LEFT JOIN out_legs o ON s.tx_cc_id = o.tx_cc_id AND s.out_tx_count = 1;
@@ -393,10 +524,19 @@ LEFT JOIN out_legs o ON s.tx_cc_id = o.tx_cc_id AND s.out_tx_count = 1;
 CREATE OR REPLACE VIEW v_issue_rows AS
 WITH cc_conflicts AS (
   SELECT tx_hash, cc_conflict_status FROM v_cross_chain_conflicts
+), cc_pair_warnings AS (
+  SELECT in_tx_hash AS tx_hash, cc_timing_status
+  FROM v_cross_chain_pairs
+  WHERE cc_timing_status <> 'ok'
+  UNION ALL
+  SELECT out_tx_hash AS tx_hash, cc_timing_status
+  FROM v_cross_chain_pairs
+  WHERE cc_timing_status <> 'ok'
 )
 SELECT
   t.*,
   cc.cc_conflict_status,
+  pw.cc_timing_status,
   trim(
     both '|' FROM concat(
       CASE WHEN tx_label_status = 'malformed' THEN 'tx_label_malformed|' ELSE '' END,
@@ -404,17 +544,35 @@ SELECT
       CASE WHEN to_label_status = 'malformed' THEN 'to_label_malformed|' ELSE '' END,
       CASE WHEN time_status <> 'parsed' THEN 'time_issue|' ELSE '' END,
       CASE WHEN amount_status <> 'parsed' THEN 'amount_issue|' ELSE '' END,
-      CASE WHEN tx_label_value IS NOT NULL AND amount_value IS NOT NULL AND tx_label_value > amount_value AND (NOT tx_is_cross_chain OR cc_match_eligible)
+      CASE WHEN format = 'qlue_utxo'
+             AND transfer_label IS NOT NULL
+             AND tx_label_leg_applies = FALSE
+             AND tx_label_applicable_leg_count = 0
+        THEN 'tx_label_leg_unresolved|' ELSE '' END,
+      CASE WHEN tx_label_value IS NOT NULL
+             AND amount_value IS NOT NULL
+             AND tx_label_leg_applies
+             AND tx_label_value > amount_value
         THEN 'label_value_exceeds_amount|' ELSE '' END,
-      CASE WHEN cc.cc_conflict_status IS NOT NULL THEN 'cross_chain_conflict|' ELSE '' END
+      CASE WHEN cc.cc_conflict_status IS NOT NULL THEN 'cross_chain_conflict|' ELSE '' END,
+      CASE WHEN pw.cc_timing_status IS NOT NULL THEN 'cross_chain_timing_warning|' ELSE '' END
     )
   ) AS issue_flags
 FROM transactions t
 LEFT JOIN cc_conflicts cc USING (tx_hash)
+LEFT JOIN cc_pair_warnings pw USING (tx_hash)
 WHERE tx_label_status = 'malformed'
    OR from_label_status = 'malformed'
    OR to_label_status = 'malformed'
    OR time_status <> 'parsed'
    OR amount_status <> 'parsed'
-   OR (tx_label_value IS NOT NULL AND amount_value IS NOT NULL AND tx_label_value > amount_value AND (NOT tx_is_cross_chain OR cc_match_eligible))
-   OR cc.cc_conflict_status IS NOT NULL;
+   OR (format = 'qlue_utxo'
+       AND transfer_label IS NOT NULL
+       AND tx_label_leg_applies = FALSE
+       AND tx_label_applicable_leg_count = 0)
+   OR (tx_label_value IS NOT NULL
+       AND amount_value IS NOT NULL
+       AND tx_label_leg_applies
+       AND tx_label_value > amount_value)
+   OR cc.cc_conflict_status IS NOT NULL
+   OR pw.cc_timing_status IS NOT NULL;

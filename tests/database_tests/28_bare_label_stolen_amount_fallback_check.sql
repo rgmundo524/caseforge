@@ -1,20 +1,22 @@
+-- File: 28_bare_label_stolen_amount_fallback_check.sql
 select
   ts,
   tx_hash,
   direction,
   transfer_label,
-  asset,
-  amount_value,
   tx_label_value,
   tx_label_asset,
-  stolen_amount_value,
+  tx_label_status,
+  tx_label_leg_applies,
+  tx_label_leg_match_reason,
+  asset,
+  amount_value,
   amount_usd_value,
+  stolen_amount_value,
   stolen_amount_usd_value,
-  theft_id,
-  tx_label_status
+  theft_id
 from transactions
 where transfer_label is not null
-  and transfer_label not like '%(%'
-  and tx_label_value is null
-order by ts desc, tx_hash, direction nulls first
-limit 150;
+  and regexp_matches(trim(coalesce(transfer_label, '')), '^[-+]?(?:[0-9][0-9,]*(\.[0-9]+)?|\.[0-9]+)$')
+order by ts desc, tx_hash, direction
+limit 100;

@@ -6,13 +6,13 @@ WITH base AS (
     '{{SOURCE_FILE}}' AS source_file,
     '{{BLOCKCHAIN}}' AS blockchain,
     NULLIF(trim(cast("Time" AS VARCHAR)), '') AS time_raw,
-    NULLIF(trim(cast("Transaction" AS VARCHAR)), '') AS tx,
+    NULLIF(trim(replace(cast("Transaction" AS VARCHAR), '"', '')), '') AS tx,
     NULLIF(trim(regexp_replace(replace(coalesce(cast("Transfer Label" AS VARCHAR), ''), '"', ''), '\s+', ' ', 'g')), '') AS tx_label,
-    NULLIF(trim(cast("Source Address Hash" AS VARCHAR)), '') AS source_address,
+    NULLIF(trim(replace(cast("Source Address Hash" AS VARCHAR), '"', '')), '') AS source_address,
     NULLIF(trim(regexp_replace(replace(coalesce(cast("Source Address Label" AS VARCHAR), ''), '"', ''), '\s+', ' ', 'g')), '') AS source_label,
     NULLIF(trim(cast("Source Group" AS VARCHAR)), '') AS source_group,
     NULLIF(trim(cast("Source Group Description" AS VARCHAR)), '') AS source_group_description,
-    NULLIF(trim(cast("Recipient Address Hash" AS VARCHAR)), '') AS destination_address,
+    NULLIF(trim(replace(cast("Recipient Address Hash" AS VARCHAR), '"', '')), '') AS destination_address,
     NULLIF(trim(regexp_replace(replace(coalesce(cast("Recipient Address Label" AS VARCHAR), ''), '"', ''), '\s+', ' ', 'g')), '') AS destination_label,
     NULLIF(trim(cast("Recipient Group" AS VARCHAR)), '') AS destination_group,
     NULLIF(trim(cast("Recipient Group Description" AS VARCHAR)), '') AS destination_group_description,
@@ -20,7 +20,7 @@ WITH base AS (
     try_cast(replace(NULLIF(trim(cast("Crypto Value" AS VARCHAR)), ''), ',', '') AS DOUBLE) AS value,
     try_cast(replace(replace(NULLIF(trim(cast("USD" AS VARCHAR)), ''), ',', ''), '$', '') AS DOUBLE) AS usd_raw
   FROM {{RAW_TABLE}}
-  WHERE NULLIF(trim(cast("Transaction" AS VARCHAR)), '') IS NOT NULL
+  WHERE NULLIF(trim(replace(cast("Transaction" AS VARCHAR), '"', '')), '') IS NOT NULL
 ), typed AS (
   SELECT
     *,

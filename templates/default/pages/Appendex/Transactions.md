@@ -42,6 +42,9 @@ select
   direction,
   cc_match_side,
   cc_match_eligible,
+  tx_label_leg_applies,
+  tx_label_leg_match_reason,
+  tx_label_applicable_leg_count,
   from_label,
   from_types,
   from_counterparty,
@@ -89,6 +92,9 @@ order by ts nulls last, tx_hash, direction nulls first, from_address, to_address
   <Column id=direction title="Direction" />
   <Column id=cc_match_side title="CC Match Side" />
   <Column id=cc_match_eligible title="CC Match Eligible" />
+  <Column id=tx_label_leg_applies title="Label Applies To This Leg" />
+  <Column id=tx_label_leg_match_reason title="Label Match Reason" />
+  <Column id=tx_label_applicable_leg_count title="Applicable Legs / Tx" />
   <Column id=from_label title="Sender Label" />
   <Column id=from_types title="Sender Types" />
   <Column id=from_counterparty title="Sender Counterparty" />
@@ -265,6 +271,8 @@ select
   in_amount_usd_value,
   in_label_value,
   in_label_asset,
+  in_effective_match_value,
+  in_effective_match_asset,
   in_counterparty,
   in_match_side,
   in_transfer_rows,
@@ -276,10 +284,14 @@ select
   out_amount_usd_value,
   out_label_value,
   out_label_asset,
+  out_effective_match_value,
+  out_effective_match_asset,
   out_counterparty,
   out_match_side,
   out_transfer_rows,
-  out_ts
+  out_ts,
+  cc_timing_status,
+  cc_timing_delta_hours
 from "case".v_cross_chain_pairs
 order by tx_cc_id;
 ```
@@ -296,6 +308,8 @@ order by tx_cc_id;
   <Column id=in_amount_usd_value title="Input USD" fmt=usd />
   <Column id=in_label_value title="Input Label Value" />
   <Column id=in_label_asset title="Input Label Asset" />
+  <Column id=in_effective_match_value title="Input Effective Match Value" />
+  <Column id=in_effective_match_asset title="Input Effective Match Asset" />
   <Column id=in_counterparty title="Input Counterparty" />
   <Column id=in_match_side title="Input Match Side" />
   <Column id=in_transfer_rows title="Input Rows" />
@@ -307,10 +321,14 @@ order by tx_cc_id;
   <Column id=out_amount_usd_value title="Output USD" fmt=usd />
   <Column id=out_label_value title="Output Label Value" />
   <Column id=out_label_asset title="Output Label Asset" />
+  <Column id=out_effective_match_value title="Output Effective Match Value" />
+  <Column id=out_effective_match_asset title="Output Effective Match Asset" />
   <Column id=out_counterparty title="Output Counterparty" />
   <Column id=out_match_side title="Output Match Side" />
   <Column id=out_transfer_rows title="Output Rows" />
   <Column id=out_ts title="Output Time" />
+  <Column id=cc_timing_status title="Timing Status" />
+  <Column id=cc_timing_delta_hours title="Timing Delta Hours" />
 </DataTable>
 
 ## Rows Needing Review
@@ -335,7 +353,10 @@ select
   tx_cc_id,
   tx_cc_direction,
   cc_match_eligible,
+  tx_label_leg_applies,
+  tx_label_leg_match_reason,
   cc_conflict_status,
+  cc_timing_status,
   issue_flags,
   source_file
 from "case".v_issue_rows
@@ -359,7 +380,10 @@ order by ts nulls last, tx_hash;
   <Column id=tx_cc_id title="CC Group" />
   <Column id=tx_cc_direction title="CC Direction" />
   <Column id=cc_match_eligible title="CC Match Eligible" />
+  <Column id=tx_label_leg_applies title="Label Applies" />
+  <Column id=tx_label_leg_match_reason title="Label Match Reason" />
   <Column id=cc_conflict_status title="CC Conflict Status" />
+  <Column id=cc_timing_status title="CC Timing Status" />
   <Column id=issue_flags title="Issue Flags" />
   <Column id=source_file title="Source File" />
 </DataTable>
