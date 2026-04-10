@@ -1,184 +1,166 @@
-# CaseForge
+# Proposed README command reference update
 
-CaseForge creates a self-contained Evidence.dev project per case and builds a DuckDB-backed investigation dataset from vendor exports.
+## Quick Start
 
-Each case directory is its own standalone Evidence project with its own data directory, manifest, normalization layer, downstream build views, and Evidence pages.
-
-## Current workflow
-
-1. Create a new case scaffold
-2. Register raw vendor exports in the case manifest
-3. Normalize vendor-specific CSVs into `normalized_combined_transactions`
-4. Build downstream case views such as `transactions`
-5. Refresh Evidence sources when needed
-
-Typical CLI sequence:
-
-```bash
-python tools/CaseForge.py new-case --cases-home /path/to/cases-home --case-id 12343 --title "Avail Holding Ltd"
-python tools/CaseForge.py add-files <files...>
-python tools/CaseForge.py normalize
-python tools/CaseForge.py build-db
-```
-
-## Commands
-
-### Create a new case
+Create a new case:
 
 ```bash
 python tools/CaseForge.py new-case \
-  --cases-home /path/to/cases-home \
-  --case-id 12343 \
-  --title "Avail Holding Ltd"
+  --cases-home /path/to/cases \
+  --case-id 123 \
+  --title "Victim Name" \
+  --template default \
+  --feature cross-chain-activity \
+  --feature urls
 ```
 
-### Register input files
-
-`add-files` copies and registers raw files plus metadata in `data/manifest.json`.
-
-TRM account:
+Add evidence files:
 
 ```bash
-python tools/CaseForge.py add-files trm.csv --source trm --model account
+python tools/CaseForge.py add-files /path/to/Overview-ETH.csv \
+  --case-root . \
+  --source qlue \
+  --model account \
+  --blockchain ethereum
+
+python tools/CaseForge.py add-files /path/to/Overview-BTC.csv \
+  --case-root . \
+  --source qlue \
+  --model utxo \
+  --blockchain bitcoin
 ```
 
-TRM UTXO:
+Normalize the evidence data:
 
 ```bash
-python tools/CaseForge.py add-files trm.csv --source trm --model utxo
+python tools/CaseForge.py normalize --case-root .
 ```
 
-Qlue account:
+Build the analytical database and refresh Evidence source extracts:
 
 ```bash
-python tools/CaseForge.py add-files qlue_account.csv --source qlue --export-type account --blockchain ethereum
+python tools/CaseForge.py build-db --case-root . --run-sources
 ```
 
-Qlue UTXO:
+Start the Evidence app:
 
 ```bash
-python tools/CaseForge.py add-files qlue_utxo.csv --source qlue --export-type utxo --blockchain bitcoin
+npm run dev
 ```
 
-## Data pipeline
+---
 
-### 1. Normalize
+## Template layering model
 
-`normalize` reads manifest entries, validates headers, stages each CSV in DuckDB, runs source-specific SQL templates, and recreates:
+Each case is generated from filesystem layers:
 
-- `normalized_combined_transactions`
-- `v_normalized_transactions`
+1. `templates/common`
+2. one primary template, such as `templates/default`
+3. zero or more feature overlays, such as `templates/features/cross-chain-activity`
 
-Run:
+Layers are applied in order. Later layers win on exact relative-path collisions.
+
+That means a case can be generated as:
+
+- `common + default`
+- `common + default + cross-chain-activity`
+- `common + default + urls`
+- `common + default + cross-chain-activity + urls`
+
+A case has **one primary template** and **zero or more feature overlays**.
+
+---
+
+## Command reference
+
+### `new-case`
+
+Create a new case directory and scaffold a standalone Evidence project.
 
 ```bash
-python tools/CaseForge.py normalize
+python tools/CaseForge.py new-case \
+  --cases-home /path/to/cases \
+  --case-id 123 \
+  --title "Victim Name" \
+  --template default \
+  --feature cross-chain-activity \
+  --feature urls
 ```
 
-### 2. Build DB
+Key options:
+- `--cases-home PATH` — parent directory where cases are created
+- `--case-id TEXT` — case identifier used in the generated folder name
+- `--title TEXT` — display title for the case
+- `--template NAME` — primary template to apply (defaults to `default`)
+- `--feature NAME` — repeatable feature overlay flag
+- `--list-templates` — list available primary templates and exit
+- `--list-features` — list available feature overlays and exit
+- `--show-plan` — print the resolved template / feature layer plan
+- `--dry-run` — validate inputs and print the plan without creating the case
 
-`build-db` assumes normalization is complete and builds downstream views from `normalized_combined_transactions`.
+Notes:
+- `common` is always applied first.
+- The selected template is applied second.
+- Features are applied after that, in the order they are provided.
+- The selected template / feature list should be written into case metadata for reproducibility.
 
-Run:
+### `add-files`
+
+Register one or more raw evidence files with the case and update `data/manifest.json`.
 
 ```bash
-python tools/CaseForge.py build-db
+python tools/CaseForge.py add-files /path/to/file.csv \
+  --case-root . \
+  --source qlue \
+  --model account \
+  --blockchain ethereum
 ```
 
-Optional:
+Key options:
+- positional file path(s) — raw evidence files to add
+- `--case-root PATH` — target case directory
+- `--source NAME` — source / vendor system (for example `qlue` or `trm`)
+- `--model NAME` — blockchain model (`account` or `utxo`)
+- `--blockchain NAME` — blockchain identifier when required
+
+### `normalize`
+
+Load the registered raw evidence files into the canonical normalized transaction layer in `data/case.duckdb`.
 
 ```bash
-python tools/CaseForge.py build-db --sources
+python tools/CaseForge.py normalize --case-root .
 ```
 
-## Canonical transactions view
+Key options:
+- `--case-root PATH` — target case directory
+- `--duckdb-bin PATH` — optional DuckDB executable path
 
-The main working surface for analysis and Evidence pages is the `transactions` view.
+### `build-db`
 
-Current key fields include:
-
-- `vendor`
-- `format`
-- `chain`
-- `ts`
-- `tx_hash`
-- `from_address`
-- `to_address`
-- `from_label`
-- `to_label`
-- `address_label`
-- `direction`
-- `asset`
-- `amount_native`
-- `amount_usd`
-- `transfer_label`
-- `theft_id`
-- `stolen_amount_native`
-- `stolen_amount_usd`
-- `source_file`
-
-### Theft and stolen amount logic
-
-`theft_id` is used to number theft-event rows in chronological order when the transfer label indicates a theft event.
-
-`stolen_amount_native` is intended to represent the traced portion of the client's stolen funds for each row, not just the initial theft row.
-
-Current behavior:
-
-- If `transfer_label` contains a parenthetical numeric override, that value is used
-- If no parenthetical value is present, a bare leading numeric value in `transfer_label` is used as a fallback
-- If neither is present, the full `amount_native` is used
-- The effective stolen value is capped so it cannot exceed the row-level `amount_native`
-- `stolen_amount_usd` is scaled proportionally from the same ratio and capped at `amount_usd`
-
-This supports cases where:
-- the entire row belongs to the client
-- only part of the row belongs to the client
-- the label formatting is slightly imperfect but still machine-parseable
-
-### Label cleanup
-
-During build, label fields are cleaned to reduce downstream SQL complexity:
-
-- double quotes are stripped
-- repeated whitespace and embedded newlines are collapsed
-- leading and trailing whitespace are trimmed
-
-## Testing workflow
-
-Ad hoc SQL checkpoint files can be stored in:
-
-```text
-/Blockchain-Nodes/Evidence_Sites/TestQueries
-```
-
-Typical one-off usage:
+Build the final analytical views and optionally refresh Evidence source extracts.
 
 ```bash
-duckdb case.duckdb -c ".read /Blockchain-Nodes/Evidence_Sites/TestQueries/02_sample_transactions.sql"
+python tools/CaseForge.py build-db --case-root . --run-sources
 ```
 
-A Fish helper script can iterate through all test SQL files and dump results to both the terminal and a timestamped report file.
+Key options:
+- `--case-root PATH` — target case directory
+- `--duckdb-bin PATH` — optional DuckDB executable path
+- `--run-sources` — refresh Evidence source extracts after building the DB
+- `--sources` — backward-compatible alias for `--run-sources`
 
-Useful categories of checks include:
+Recommended usage:
+- Prefer `--run-sources` in docs and examples.
+- Keep `--sources` temporarily as a compatibility alias.
 
-- schema inspection
-- row counts
-- timestamp null checks
-- label-pattern matching
-- theft numbering validation
-- partial stolen-amount validation
-- overflow checks
-- Service DA / VA / TA / Dormant / Service CXC label tests
+---
 
-## Design philosophy
+## Recommended workflow
 
-- one case equals one Evidence project
-- DuckDB-first pipeline
-- SQL-first normalization and build layers
-- clear separation between raw intake, normalization, and downstream views
-- reproducible per-case artifacts
+1. `new-case`
+2. `add-files`
+3. `normalize`
+4. `build-db --run-sources`
+5. `npm run dev`
 
-## Notes
-
-This project is still evolving quickly. See `TASKS.md` for current cleanup items and backlog work.
+This keeps case composition at creation time and keeps later commands focused on evidence ingestion, normalization, and analysis-build steps.
