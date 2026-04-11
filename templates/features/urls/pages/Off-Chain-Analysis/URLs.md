@@ -7,17 +7,16 @@ sidebar_position: 5
 
 This page is added by the `urls` feature overlay.
 
-The current source query is a placeholder surface with the intended schema, so
-you can see the feature-overlay mechanism in action before the URL ingestor exists.
-
 ```sql url_count
 select count(*) as url_count
 from case.url_indicators
+where coalesce(__placeholder_row, false) = false
 ```
 
 ```sql urls
 select *
 from case.url_indicators
+where coalesce(__placeholder_row, false) = false
 order by observed_at desc nulls last
 ```
 

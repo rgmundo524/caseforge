@@ -1,87 +1,87 @@
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Sequence
 
-from .template_layers import describe_plan, list_feature_overlays, list_primary_templates, plan_template_layers
+from .template_layers import (
+    TemplateSelection,
+    available_features,
+    available_templates,
+    describe_plan,
+    plan_template_layers,
+    validate_feature_names,
+    validate_template_name,
+)
 
 
 @dataclass(frozen=True)
-class TemplateSelection:
+class NewCaseTemplateSelection:
     template_name: str
     feature_names: tuple[str, ...]
-    show_plan: bool = False
-    dry_run: bool = False
+    show_plan: bool
 
 
-
-def add_new_case_template_args(parser) -> None:
+def add_new_case_template_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--template",
         default="default",
-        help="Primary template to apply (default: %(default)s)",
+        help="Primary template to apply. Default: default",
     )
     parser.add_argument(
         "--feature",
         action="append",
         default=[],
-        help="Feature overlay to apply. Repeat the flag to add multiple features.",
+        help="Feature overlay to apply. Repeatable.",
     )
     parser.add_argument(
         "--list-templates",
         action="store_true",
-        help="List available primary templates and exit.",
+        help="List available templates and exit.",
     )
     parser.add_argument(
         "--list-features",
         action="store_true",
-        help="List available feature overlays and exit.",
+        help="List available features and exit.",
     )
     parser.add_argument(
         "--show-plan",
         action="store_true",
-        help="Print the resolved template / feature layer plan.",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Validate inputs and print the plan without creating the case.",
+        help="Print the resolved template/feature layer plan.",
     )
 
 
-
-def handle_template_listing_flags(args, *, repo_root: Path | None = None) -> Optional[int]:
+def handle_template_listing_flags(args: argparse.Namespace) -> int | None:
     if getattr(args, "list_templates", False):
-        for name in list_primary_templates(repo_root=repo_root):
-            print(name)
+        print("Available templates:")
+        for name in available_templates():
+            print(f"  {name}")
         return 0
 
     if getattr(args, "list_features", False):
-        for name in list_feature_overlays(repo_root=repo_root):
-            print(name)
+        print("Available features:")
+        for name in available_features():
+            print(f"  {name}")
         return 0
 
     return None
 
 
-
-def resolve_template_selection(args) -> TemplateSelection:
-    feature_names = tuple(args.feature or [])
-    return TemplateSelection(
-        template_name=str(getattr(args, "template", "default") or "default"),
+def resolve_template_selection(args: argparse.Namespace) -> NewCaseTemplateSelection:
+    template_name = validate_template_name(getattr(args, "template", "default"))
+    feature_names = validate_feature_names(getattr(args, "feature", ()))
+    return NewCaseTemplateSelection(
+        template_name=template_name,
         feature_names=feature_names,
         show_plan=bool(getattr(args, "show_plan", False)),
-        dry_run=bool(getattr(args, "dry_run", False)),
     )
 
 
-
-def render_template_plan(*, case_root: Path, selection: TemplateSelection, repo_root: Path | None = None) -> str:
+def render_template_plan(*, case_root: Path, selection: NewCaseTemplateSelection) -> str:
     plan = plan_template_layers(
-        Path(case_root),
+        case_root=case_root,
         template_name=selection.template_name,
         feature_names=selection.feature_names,
-        repo_root=repo_root,
     )
     return describe_plan(plan)

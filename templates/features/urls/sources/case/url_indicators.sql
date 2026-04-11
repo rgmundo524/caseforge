@@ -1,7 +1,5 @@
 -- Placeholder OSINT source surface.
--- Replace this file later with something like:
---   select * from osint_url_indicators;
-
+-- Keep one typed placeholder row so Evidence source extraction emits a valid parquet file.
 select
   cast(null as varchar) as indicator_id,
   cast(null as varchar) as observed_url,
@@ -10,5 +8,5 @@ select
   cast(null as varchar) as source_type,
   cast(null as varchar) as artifact_ref,
   cast(null as varchar) as note,
-  cast(null as timestamp) as observed_at
-where false;
+  cast(null as timestamp) as observed_at,
+  true as __placeholder_row;

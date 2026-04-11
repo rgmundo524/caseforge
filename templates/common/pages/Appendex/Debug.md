@@ -28,9 +28,9 @@ order by label;
 
 ```sql source_row_counts
 select 'transactions' as dataset, count(*) as row_count from case.transactions
-union all select 'issue_rows', count(*) from case.issue_rows
+union all select 'issue_rows', count(*) from case.issue_rows where coalesce(__placeholder_row, false) = false
 union all select 'cross_chain_pairs', count(*) from case.cross_chain_pairs
-union all select 'cross_chain_conflicts', count(*) from case.cross_chain_conflicts
+union all select 'cross_chain_conflicts', count(*) from case.cross_chain_conflicts where coalesce(__placeholder_row, false) = false
 union all select 'cross_chain_tx_legs', count(*) from case.cross_chain_tx_legs
 union all select 'tx_label_entries', count(*) from case.tx_label_entries
 union all select 'tx_label_entry_resolution', count(*) from case.tx_label_entry_resolution
@@ -40,7 +40,7 @@ union all select 'normalized_transactions', count(*) from case.normalized_transa
 union all select 'transfer_base', count(*) from case.transfer_base
 union all select 'deposit_transactions', count(*) from case.deposit_transactions
 union all select 'deposit_exposure_by_service', count(*) from case.deposit_exposure_by_service
-union all select 'dormant_asset_locations', count(*) from case.dormant_asset_locations
+union all select 'dormant_asset_locations', count(*) from case.dormant_asset_locations where coalesce(__placeholder_row, false) = false
 union all select 'theft_transactions', count(*) from case.theft_transactions
 order by dataset;
 ```
@@ -79,22 +79,20 @@ where '${inputs.chain_filter.value}' = 'all'
 ```sql issue_rows_filtered
 select *
 from case.issue_rows
-where '${inputs.chain_filter.value}' = 'all'
-   or lower(chain) = '${inputs.chain_filter.value}'
-order by ts nulls last, tx_hash, transfer_row_id;
+where coalesce(__placeholder_row, false) = false
+  and (
+    '${inputs.chain_filter.value}' = 'all'
+    or lower(chain) = '${inputs.chain_filter.value}'
+  )
+order by ts nulls last, tx_hash;
 ```
 
 <DataTable data={issue_rows_filtered} title="Rows Needing Review" search download rows=20 rowNumbers rowLines rowShading>
-  <Column id=transfer_row_id title="Transfer Row ID" />
   <Column id=tx_hash title="Transaction Hash" />
   <Column id=chain title="Chain" />
   <Column id=direction title="Direction" />
   <Column id=transfer_label title="Raw Tx Label" />
-  <Column id=tx_label_entry_raw title="Applied Entry" />
-  <Column id=tx_label_scope title="Entry Scope" />
   <Column id=tx_label_status title="Label Status" />
-  <Column id=tx_label_assignment_status title="Assignment Status" />
-  <Column id=tx_label_leg_match_reason title="Assignment Reason" />
   <Column id=amount_value title="Transfer Value" />
   <Column id=stolen_amount_value title="Stolen Value" />
   <Column id=issue_flags title="Issue Flags" />
@@ -171,60 +169,4 @@ order by tx_cc_id;
   <Column id=cc_pair_status title="Pair Status" />
   <Column id=cc_timing_status title="Timing Status" />
   <Column id=cc_timing_delta_hours title="Timing Δ Hours" />
-</DataTable>
-
-## Transfer Sample
-
-```sql transfer_sample
-select
-  transfer_row_id,
-  tx_hash,
-  chain,
-  direction,
-  transfer_label,
-  tx_label_entry_raw,
-  tx_label_scope,
-  tx_label_actions,
-  tx_label_counterparty,
-  tx_label_value,
-  tx_label_asset,
-  tx_label_status,
-  tx_label_assignment_status,
-  tx_label_leg_applies,
-  tx_label_leg_match_reason,
-  from_label,
-  to_label,
-  asset,
-  amount_value,
-  stolen_amount_value,
-  source_file
-from case.transactions
-where '${inputs.chain_filter.value}' = 'all'
-   or lower(chain) = '${inputs.chain_filter.value}'
-order by ts nulls last, tx_hash, transfer_row_id
-limit 100;
-```
-
-<DataTable data={transfer_sample} title="Transfer Sample" search download rows=20 rowNumbers rowLines rowShading>
-  <Column id=transfer_row_id title="Transfer Row ID" />
-  <Column id=tx_hash title="Transaction Hash" />
-  <Column id=chain title="Chain" />
-  <Column id=direction title="Direction" />
-  <Column id=transfer_label title="Raw Tx Label" />
-  <Column id=tx_label_entry_raw title="Applied Entry" />
-  <Column id=tx_label_scope title="Scope" />
-  <Column id=tx_label_actions title="Actions" />
-  <Column id=tx_label_counterparty title="Counterparty" />
-  <Column id=tx_label_value title="Label Value" />
-  <Column id=tx_label_asset title="Label Asset" />
-  <Column id=tx_label_status title="Label Status" />
-  <Column id=tx_label_assignment_status title="Assignment Status" />
-  <Column id=tx_label_leg_applies title="Applies To This Leg" />
-  <Column id=tx_label_leg_match_reason title="Assignment Reason" />
-  <Column id=from_label title="From Label" />
-  <Column id=to_label title="To Label" />
-  <Column id=asset title="Asset" />
-  <Column id=amount_value title="Transfer Value" />
-  <Column id=stolen_amount_value title="Stolen Value" />
-  <Column id=source_file title="Source File" />
 </DataTable>

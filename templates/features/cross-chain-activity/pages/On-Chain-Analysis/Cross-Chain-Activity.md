@@ -7,10 +7,6 @@ sidebar_position: 35
 
 This page is added by the `cross-chain-activity` feature overlay.
 
-It is intentionally feature-scoped:
-- it does not replace the shared `cross_chain_pairs` source surface
-- it adds a focused analysis page and feature-specific extracted slices
-
 ```sql pair_overview
 select *
 from case.cross_chain_activity_summary
@@ -20,6 +16,7 @@ order by tx_cc_id
 ```sql pair_outliers
 select *
 from case.cross_chain_activity_outliers
+where coalesce(__placeholder_row, false) = false
 order by abs(cc_timing_delta_hours) desc nulls last, tx_cc_id
 ```
 

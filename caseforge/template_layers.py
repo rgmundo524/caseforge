@@ -1,244 +1,298 @@
 from __future__ import annotations
 
 import json
-import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Iterable, List, Sequence
 
-CASE_TEMPLATE_CONFIG_REL = Path("config/caseforge.json")
+CASEFORGE_CONFIG_REL = Path("config/caseforge.json")
+_METADATA_REL = CASEFORGE_CONFIG_REL
+
+# Generated/transient artifacts that must never be copied from template layers
+# into a newly scaffolded Evidence project.
+IGNORED_TEMPLATE_NAMES = {
+    ".git",
+    ".evidence",
+    ".svelte-kit",
+    ".vite",
+    "node_modules",
+    "dist",
+    "build",
+    ".DS_Store",
+    "__pycache__",
+}
+
+
+class TemplateLayerError(RuntimeError):
+    pass
 
 
 @dataclass(frozen=True)
-class TemplateLayer:
-    name: str
-    kind: str  # common | template | feature
-    path: Path
-
-
-@dataclass(frozen=True)
-class TemplatePlan:
-    case_root: Path
+class TemplateSelection:
     template_name: str
-    feature_names: Tuple[str, ...]
-    layers: Tuple[TemplateLayer, ...]
+    feature_names: tuple[str, ...] = ()
+    show_plan: bool = False
 
 
-
-def _repo_root(anchor: Path | None = None) -> Path:
-    anchor = anchor or Path(__file__).resolve()
-    return anchor.parent.parent.resolve()
-
-
-
-def _templates_root(repo_root: Path | None = None) -> Path:
-    repo_root = repo_root or _repo_root()
-    return (repo_root / "templates").resolve()
+@dataclass(frozen=True)
+class LayerEntry:
+    name: str
+    path: Path
+    kind: str  # common | template | feature
 
 
+@dataclass(frozen=True)
+class MaterializedTemplatePlan:
+    repo_root: Path
+    case_root: Path
+    selection: TemplateSelection
+    layers: tuple[LayerEntry, ...]
+    collisions: tuple[str, ...]
 
-def _normalize_name(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9_-]+", "-", (name or "").strip().lower())
-    slug = re.sub(r"-{2,}", "-", slug).strip("-")
-    if not slug:
-        raise ValueError("Empty template/feature name.")
-    return slug
+    @property
+    def template_name(self) -> str:
+        return self.selection.template_name
 
+    @property
+    def feature_names(self) -> tuple[str, ...]:
+        return self.selection.feature_names
 
-
-def _dedupe_preserve_order(names: Iterable[str]) -> Tuple[str, ...]:
-    seen = set()
-    out: List[str] = []
-    for raw in names:
-        if raw is None:
-            continue
-        name = _normalize_name(raw)
-        if name not in seen:
-            seen.add(name)
-            out.append(name)
-    return tuple(out)
+    @property
+    def layer_roots(self) -> tuple[Path, ...]:
+        return tuple(layer.path for layer in self.layers)
 
 
-
-def _layer_file_map(layer: TemplateLayer) -> Dict[Path, Path]:
-    out: Dict[Path, Path] = {}
-    if not layer.path.exists():
-        return out
-    for src in layer.path.rglob("*"):
-        if src.is_file():
-            rel = src.relative_to(layer.path)
-            out[rel] = src
-    return out
+# Backward-compat alias for earlier helper name.
+TemplatePlan = MaterializedTemplatePlan
 
 
-
-def list_primary_templates(*, repo_root: Path | None = None) -> Tuple[str, ...]:
-    templates_root = _templates_root(repo_root)
-    out: List[str] = []
-    if not templates_root.exists():
-        return tuple()
-    for child in sorted(templates_root.iterdir()):
-        if not child.is_dir():
-            continue
-        if child.name in {"common", "features", "sql"}:
-            continue
-        out.append(child.name)
-    return tuple(out)
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parent.parent
 
 
-
-def list_feature_overlays(*, repo_root: Path | None = None) -> Tuple[str, ...]:
-    features_root = _templates_root(repo_root) / "features"
-    if not features_root.exists():
-        return tuple()
-    return tuple(sorted(child.name for child in features_root.iterdir() if child.is_dir()))
+def _templates_root() -> Path:
+    return _repo_root() / "templates"
 
 
+def _common_root() -> Path:
+    return _templates_root() / "common"
 
-def validate_template_name(template_name: str, *, repo_root: Path | None = None) -> str:
-    normalized = _normalize_name(template_name or "default")
-    available = set(list_primary_templates(repo_root=repo_root))
-    if normalized not in available:
-        raise FileNotFoundError(
-            f"Unknown template '{normalized}'. Available templates: {', '.join(sorted(available)) or '(none)'}"
+
+def _template_root(template_name: str) -> Path:
+    return _templates_root() / template_name
+
+
+def _features_root() -> Path:
+    return _templates_root() / "features"
+
+
+def _feature_root(feature_name: str) -> Path:
+    return _features_root() / feature_name
+
+
+def _iter_child_dirs(root: Path) -> list[Path]:
+    if not root.exists() or not root.is_dir():
+        return []
+    return sorted((p for p in root.iterdir() if p.is_dir()), key=lambda p: p.name)
+
+
+def available_templates() -> list[str]:
+    templates_root = _templates_root()
+    excluded = {"common", "features", "sql", "__pycache__"}
+    return [
+        p.name
+        for p in _iter_child_dirs(templates_root)
+        if p.name not in excluded and not p.name.startswith(".")
+    ]
+
+
+def list_available_templates() -> list[str]:
+    return available_templates()
+
+
+def available_features() -> list[str]:
+    return [p.name for p in _iter_child_dirs(_features_root()) if not p.name.startswith(".")]
+
+
+def list_available_features() -> list[str]:
+    return available_features()
+
+
+def validate_template_name(template_name: str) -> str:
+    name = (template_name or "default").strip() or "default"
+    root = _template_root(name)
+    if not root.exists() or not root.is_dir():
+        raise TemplateLayerError(
+            f"Unknown template '{name}'. Available templates: {', '.join(available_templates()) or 'none'}"
         )
-    return normalized
+    return name
 
 
+def validate_feature_names(feature_names: Sequence[str] | None) -> tuple[str, ...]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for raw in feature_names or ():
+        name = (raw or "").strip()
+        if not name or name in seen:
+            continue
+        root = _feature_root(name)
+        if not root.exists() or not root.is_dir():
+            raise TemplateLayerError(
+                f"Unknown feature '{name}'. Available features: {', '.join(available_features()) or 'none'}"
+            )
+        seen.add(name)
+        ordered.append(name)
+    return tuple(ordered)
 
-def validate_feature_names(feature_names: Iterable[str], *, repo_root: Path | None = None) -> Tuple[str, ...]:
-    requested = _dedupe_preserve_order(feature_names)
-    available = set(list_feature_overlays(repo_root=repo_root))
-    missing = [name for name in requested if name not in available]
-    if missing:
-        raise FileNotFoundError(
-            f"Unknown feature overlay(s): {', '.join(missing)}. Available features: {', '.join(sorted(available)) or '(none)'}"
-        )
-    return requested
 
+def _should_skip(path: Path) -> bool:
+    return any(part in IGNORED_TEMPLATE_NAMES for part in path.parts)
+
+
+def _iter_files(root: Path) -> Iterable[Path]:
+    if not root.exists():
+        return []
+    return sorted(
+        p for p in root.rglob("*") if p.is_file() and not _should_skip(p.relative_to(root))
+    )
+
+
+def _collect_collisions(layers: Sequence[LayerEntry]) -> list[str]:
+    seen: dict[Path, str] = {}
+    collisions: list[str] = []
+    for layer in layers:
+        for path in _iter_files(layer.path):
+            rel = path.relative_to(layer.path)
+            if rel in seen:
+                collisions.append(f"{rel.as_posix()}: {seen[rel]} -> {layer.name}")
+            seen[rel] = layer.name
+    return collisions
+
+
+def detect_collisions(plan: MaterializedTemplatePlan) -> dict[str, list[str]]:
+    owners: dict[str, list[str]] = {}
+    for layer in plan.layers:
+        for path in _iter_files(layer.path):
+            rel = path.relative_to(layer.path).as_posix()
+            owners.setdefault(rel, []).append(layer.name)
+    return {rel: names for rel, names in owners.items() if len(names) > 1}
 
 
 def plan_template_layers(
     case_root: Path,
     template_name: str = "default",
-    feature_names: Iterable[str] = (),
-    *,
-    repo_root: Path | None = None,
-) -> TemplatePlan:
-    case_root = Path(case_root).resolve()
-    template_name = validate_template_name(template_name, repo_root=repo_root)
-    feature_names = validate_feature_names(feature_names, repo_root=repo_root)
+    feature_names: Sequence[str] | None = None,
+) -> MaterializedTemplatePlan:
+    case_root = case_root.resolve()
+    repo_root = _repo_root()
+    template_name = validate_template_name(template_name)
+    feature_names = validate_feature_names(feature_names)
 
-    templates_root = _templates_root(repo_root)
-    common_root = templates_root / "common"
-    template_root = templates_root / template_name
-    features_root = templates_root / "features"
+    common = _common_root()
+    if not common.exists() or not common.is_dir():
+        raise TemplateLayerError(f"Missing common template layer: {common}")
 
-    if not common_root.exists():
-        raise FileNotFoundError(f"Missing common template layer: {common_root}")
-
-    layers: List[TemplateLayer] = [
-        TemplateLayer(name="common", kind="common", path=common_root),
-        TemplateLayer(name=template_name, kind="template", path=template_root),
+    layers: list[LayerEntry] = [
+        LayerEntry(name="common", path=common, kind="common"),
+        LayerEntry(name=template_name, path=_template_root(template_name), kind="template"),
     ]
     for feature_name in feature_names:
-        layers.append(TemplateLayer(name=feature_name, kind="feature", path=features_root / feature_name))
+        layers.append(LayerEntry(name=feature_name, path=_feature_root(feature_name), kind="feature"))
 
-    return TemplatePlan(
+    collisions = tuple(_collect_collisions(layers))
+    return MaterializedTemplatePlan(
+        repo_root=repo_root,
         case_root=case_root,
-        template_name=template_name,
-        feature_names=feature_names,
+        selection=TemplateSelection(template_name=template_name, feature_names=feature_names),
         layers=tuple(layers),
+        collisions=collisions,
     )
 
 
+def describe_plan(plan: MaterializedTemplatePlan) -> str:
+    lines = [
+        "Template layer plan:",
+        f"  case_root: {plan.case_root}",
+        f"  template:  {plan.selection.template_name}",
+        f"  features:  {', '.join(plan.selection.feature_names) if plan.selection.feature_names else '(none)'}",
+        "  layers:",
+    ]
+    for idx, layer in enumerate(plan.layers, start=1):
+        lines.append(f"    {idx}. {layer.kind}:{layer.name} -> {layer.path}")
+    if plan.collisions:
+        lines.append("  collisions:")
+        for item in plan.collisions:
+            lines.append(f"    - {item}")
+    else:
+        lines.append("  collisions: none")
+    return "\n".join(lines)
 
-def collect_collisions(plan: TemplatePlan) -> Dict[Path, Tuple[TemplateLayer, ...]]:
-    collisions: Dict[Path, List[TemplateLayer]] = {}
-    for layer in plan.layers:
-        for rel in _layer_file_map(layer):
-            collisions.setdefault(rel, []).append(layer)
-    return {rel: tuple(owners) for rel, owners in collisions.items() if len(owners) > 1}
 
+def _copy_tree_overlay(*, src: Path, dst: Path) -> None:
+    for path in _iter_files(src):
+        rel = path.relative_to(src)
+        out = dst / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, out)
+
+
+def _purge_transient_paths(case_root: Path) -> list[str]:
+    removed: list[str] = []
+    for name in sorted(IGNORED_TEMPLATE_NAMES):
+        if name in {".git", ".DS_Store", "__pycache__"}:
+            continue
+        for path in case_root.rglob(name):
+            if not path.exists():
+                continue
+            try:
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+                removed.append(path.relative_to(case_root).as_posix())
+            except FileNotFoundError:
+                pass
+    return removed
+
+
+def write_case_template_metadata(case_root: Path, selection: TemplateSelection) -> Path:
+    case_root = case_root.resolve()
+    out = case_root / _METADATA_REL
+    out.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "template": selection.template_name,
+        "features": list(selection.feature_names),
+    }
+    out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return out
+
+
+def write_caseforge_config(case_root: Path, plan: MaterializedTemplatePlan) -> Path:
+    return write_case_template_metadata(case_root, plan.selection)
+
+
+def read_case_template_metadata(case_root: Path) -> TemplateSelection | None:
+    path = case_root.resolve() / _METADATA_REL
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return TemplateSelection(
+        template_name=str(data.get("template") or "default"),
+        feature_names=tuple(str(x) for x in data.get("features") or ()),
+    )
 
 
 def materialize_template_layers(
     case_root: Path,
+    *,
     template_name: str = "default",
-    feature_names: Iterable[str] = (),
-    *,
-    repo_root: Path | None = None,
-) -> TemplatePlan:
-    plan = plan_template_layers(
-        case_root=case_root,
-        template_name=template_name,
-        feature_names=feature_names,
-        repo_root=repo_root,
-    )
-
+    feature_names: Sequence[str] | None = None,
+) -> MaterializedTemplatePlan:
+    plan = plan_template_layers(case_root=case_root, template_name=template_name, feature_names=feature_names)
+    plan.case_root.mkdir(parents=True, exist_ok=True)
     for layer in plan.layers:
-        for rel, src in _layer_file_map(layer).items():
-            dst = plan.case_root / rel
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
-
+        _copy_tree_overlay(src=layer.path, dst=plan.case_root)
+    _purge_transient_paths(plan.case_root)
+    write_case_template_metadata(plan.case_root, plan.selection)
     return plan
-
-
-
-def case_template_config_path(case_root: Path) -> Path:
-    return Path(case_root).resolve() / CASE_TEMPLATE_CONFIG_REL
-
-
-
-def write_case_template_config(
-    case_root: Path,
-    *,
-    template_name: str,
-    feature_names: Iterable[str] = (),
-) -> Path:
-    payload = {
-        "template": _normalize_name(template_name or "default"),
-        "features": list(_dedupe_preserve_order(feature_names)),
-    }
-    out_path = case_template_config_path(case_root)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return out_path
-
-
-
-def load_case_template_config(case_root: Path) -> Dict[str, object]:
-    cfg_path = case_template_config_path(case_root)
-    if not cfg_path.exists():
-        return {"template": "default", "features": []}
-    data = json.loads(cfg_path.read_text(encoding="utf-8"))
-    template_name = _normalize_name(str(data.get("template") or "default"))
-    feature_names = [str(x) for x in (data.get("features") or [])]
-    return {
-        "template": template_name,
-        "features": list(_dedupe_preserve_order(feature_names)),
-    }
-
-
-
-def describe_plan(plan: TemplatePlan) -> str:
-    lines: List[str] = []
-    lines.append(f"Case root: {plan.case_root}")
-    lines.append(f"Primary template: {plan.template_name}")
-    lines.append("Feature overlays: " + (", ".join(plan.feature_names) if plan.feature_names else "(none)"))
-    lines.append("Layer order:")
-    for idx, layer in enumerate(plan.layers, start=1):
-        lines.append(f"  {idx}. [{layer.kind}] {layer.name} -> {layer.path}")
-
-    collisions = collect_collisions(plan)
-    if not collisions:
-        lines.append("Path collisions: none")
-    else:
-        lines.append("Path collisions (later layers win on exact relative path):")
-        for rel in sorted(collisions):
-            owners = " -> ".join(f"{layer.kind}:{layer.name}" for layer in collisions[rel])
-            lines.append(f"  - {rel.as_posix()} :: {owners}")
-
-    return "\n".join(lines)

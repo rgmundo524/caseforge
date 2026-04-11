@@ -1,21 +1,122 @@
--- Feature overlay source surface: cross-chain rows needing review
-select
-  tx_cc_id,
-  in_chain,
-  out_chain,
-  in_tx_hash,
-  out_tx_hash,
-  in_asset,
-  out_asset,
-  in_effective_match_value,
-  out_effective_match_value,
-  cc_timing_status,
-  cc_timing_delta_hours
-from v_cross_chain_pairs
-where
-  coalesce(cc_timing_status, 'ok') <> 'ok'
-  or in_chain is null
-  or out_chain is null
-  or in_tx_hash is null
-  or out_tx_hash is null
-order by abs(cc_timing_delta_hours) desc nulls last, tx_cc_id;
+WITH actual AS (
+  SELECT
+    tx_cc_id,
+    in_tx_hash,
+    in_chain,
+    in_asset,
+    in_amount_value,
+    in_amount_usd_value,
+    in_label_value,
+    in_label_asset,
+    in_effective_match_value,
+    in_effective_match_asset,
+    in_counterparty,
+    in_match_side,
+    in_label_scope,
+    in_transfer_rows,
+    in_ts,
+    out_tx_hash,
+    out_chain,
+    out_asset,
+    out_amount_value,
+    out_amount_usd_value,
+    out_label_value,
+    out_label_asset,
+    out_effective_match_value,
+    out_effective_match_asset,
+    out_counterparty,
+    out_match_side,
+    out_label_scope,
+    out_transfer_rows,
+    out_ts,
+    cc_pair_status,
+    cc_timing_status,
+    cc_timing_delta_hours
+  FROM v_cross_chain_pairs
+  WHERE
+    coalesce(cc_pair_status, '') <> 'paired'
+    OR coalesce(cc_timing_status, '') <> 'ok'
+),
+combined AS (
+  SELECT
+    tx_cc_id,
+    in_tx_hash,
+    in_chain,
+    in_asset,
+    in_amount_value,
+    in_amount_usd_value,
+    in_label_value,
+    in_label_asset,
+    in_effective_match_value,
+    in_effective_match_asset,
+    in_counterparty,
+    in_match_side,
+    in_label_scope,
+    in_transfer_rows,
+    in_ts,
+    out_tx_hash,
+    out_chain,
+    out_asset,
+    out_amount_value,
+    out_amount_usd_value,
+    out_label_value,
+    out_label_asset,
+    out_effective_match_value,
+    out_effective_match_asset,
+    out_counterparty,
+    out_match_side,
+    out_label_scope,
+    out_transfer_rows,
+    out_ts,
+    cc_pair_status,
+    cc_timing_status,
+    cc_timing_delta_hours,
+    false AS __placeholder_row,
+    abs(coalesce(cc_timing_delta_hours, 0)) AS __sort_abs_timing_delta_hours
+  FROM actual
+
+  UNION ALL
+
+  SELECT
+    NULL::INTEGER AS tx_cc_id,
+    NULL::VARCHAR AS in_tx_hash,
+    NULL::VARCHAR AS in_chain,
+    NULL::VARCHAR AS in_asset,
+    NULL::DOUBLE AS in_amount_value,
+    NULL::DOUBLE AS in_amount_usd_value,
+    NULL::DOUBLE AS in_label_value,
+    NULL::VARCHAR AS in_label_asset,
+    NULL::DOUBLE AS in_effective_match_value,
+    NULL::VARCHAR AS in_effective_match_asset,
+    NULL::VARCHAR AS in_counterparty,
+    NULL::VARCHAR AS in_match_side,
+    NULL::VARCHAR AS in_label_scope,
+    NULL::BIGINT AS in_transfer_rows,
+    NULL::TIMESTAMP AS in_ts,
+    NULL::VARCHAR AS out_tx_hash,
+    NULL::VARCHAR AS out_chain,
+    NULL::VARCHAR AS out_asset,
+    NULL::DOUBLE AS out_amount_value,
+    NULL::DOUBLE AS out_amount_usd_value,
+    NULL::DOUBLE AS out_label_value,
+    NULL::VARCHAR AS out_label_asset,
+    NULL::DOUBLE AS out_effective_match_value,
+    NULL::VARCHAR AS out_effective_match_asset,
+    NULL::VARCHAR AS out_counterparty,
+    NULL::VARCHAR AS out_match_side,
+    NULL::VARCHAR AS out_label_scope,
+    NULL::BIGINT AS out_transfer_rows,
+    NULL::TIMESTAMP AS out_ts,
+    NULL::VARCHAR AS cc_pair_status,
+    NULL::VARCHAR AS cc_timing_status,
+    NULL::DOUBLE AS cc_timing_delta_hours,
+    true AS __placeholder_row,
+    NULL::DOUBLE AS __sort_abs_timing_delta_hours
+  WHERE NOT EXISTS (SELECT 1 FROM actual)
+)
+SELECT * EXCLUDE (__sort_abs_timing_delta_hours)
+FROM combined
+ORDER BY
+  __placeholder_row ASC,
+  __sort_abs_timing_delta_hours DESC NULLS LAST,
+  tx_cc_id;
