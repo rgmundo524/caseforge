@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -14,10 +15,35 @@ from caseforge.workspace import (
 )
 
 
+def _seed_local_evidence_template(cases_home: Path) -> None:
+    template_root = cases_home / "evidence-templates" / "template"
+    template_root.mkdir(parents=True, exist_ok=True)
+    (template_root / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "evidence-template",
+                "scripts": {
+                    "dev": "evidence dev",
+                    "sources": "evidence sources",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (template_root / "package-lock.json").write_text(
+        json.dumps({"name": "evidence-template", "lockfileVersion": 3, "packages": {"": {"name": "x"}}})
+        + "\n",
+        encoding="utf-8",
+    )
+    (template_root / ".npmrc").write_text("loglevel=error\n", encoding="utf-8")
+
+
 class WorkspaceInitTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmpdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tmpdir.name)
+        _seed_local_evidence_template(self.root)
 
     def tearDown(self) -> None:
         self.tmpdir.cleanup()
@@ -122,6 +148,7 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmpdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tmpdir.name)
+        _seed_local_evidence_template(self.root)
         self.workspace = init_workspace(
             cases_home=self.root,
             case_id="12345",
@@ -265,6 +292,19 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         self.assertTrue(snapshot_path.exists())
         self.assertTrue(draft_path.exists())
         self.assertEqual(draft_path, self.workspace / "WEB" / "analysis-site" / "pages" / "index.md")
+        self.assertTrue((self.workspace / "WEB" / "analysis-site" / ".caseforge" / "web_output.json").exists())
+        self.assertTrue((self.workspace / "WEB" / "analysis-site" / "evidence.config.yaml").exists())
+        package_path = self.workspace / "WEB" / "analysis-site" / "package.json"
+        lock_path = self.workspace / "WEB" / "analysis-site" / "package-lock.json"
+        self.assertTrue(package_path.exists())
+        self.assertTrue(lock_path.exists())
+        package_json = json.loads(package_path.read_text(encoding="utf-8"))
+        lock_json = json.loads(lock_path.read_text(encoding="utf-8"))
+        self.assertIsInstance(package_json, dict)
+        self.assertIsInstance(lock_json, dict)
+        self.assertTrue(package_json)
+        self.assertTrue(lock_json)
+        self.assertTrue((self.workspace / "WEB" / "analysis-site" / ".npmrc").exists())
 
         draft = draft_path.read_text(encoding="utf-8")
         self.assertIn("# Test Case", draft)
@@ -274,10 +314,38 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         self.assertNotIn("## Conclusions", draft)
         self.assertIn("Document factual findings, supporting evidence, and notable analytical outcomes.", draft)
 
+    def test_build_web_draft_writes_output_manifest_with_template_features_and_relative_links(self) -> None:
+        build_web_draft(workspace_root=self.workspace, output_name="analysis-site")
+        output_root = self.workspace / "WEB" / "analysis-site"
+
+        manifest = json.loads((output_root / ".caseforge" / "web_output.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["output_name"], "analysis-site")
+        self.assertEqual(manifest["renderer"], "evidence")
+        self.assertEqual(manifest["template"], "default")
+        self.assertEqual(manifest["features"], ["cross-chain-activity", "urls"])
+        self.assertEqual(manifest["section_snapshot"], "../../Sources/derived/sections_snapshot.json")
+        self.assertEqual(manifest["sources_root"], "../../Sources")
+        self.assertEqual(manifest["workspace_root"], "../..")
+        self.assertTrue(manifest["built_at"].endswith("Z"))
+
+    def test_build_web_draft_points_evidence_config_to_workspace_sources_data(self) -> None:
+        build_web_draft(workspace_root=self.workspace, output_name="analysis-site")
+        output_root = self.workspace / "WEB" / "analysis-site"
+
+        evidence_config = (output_root / "evidence.config.yaml").read_text(encoding="utf-8")
+        self.assertIn("filename: ../../Sources/data/case.duckdb", evidence_config)
+        self.assertFalse((output_root / "data" / "case.duckdb").exists())
+        self.assertFalse((output_root / "Sources").exists())
+
     def test_build_web_draft_is_refresh_safe(self) -> None:
         _, draft_path = build_web_draft(workspace_root=self.workspace, output_name="analysis-site")
         self.assertTrue(draft_path.exists())
         first = draft_path.read_text(encoding="utf-8")
+
+        output_root = self.workspace / "WEB" / "analysis-site"
+        stale_path = output_root / "pages" / "stale.md"
+        stale_path.write_text("stale generated file\n", encoding="utf-8")
+        self.assertTrue(stale_path.exists())
 
         section_path = self.workspace / "Sections" / "case-background.md"
         updated = section_path.read_text(encoding="utf-8").replace(
@@ -291,6 +359,15 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         second = draft_path_second.read_text(encoding="utf-8")
         self.assertNotEqual(first, second)
         self.assertIn("Updated background content.", second)
+        self.assertFalse(stale_path.exists())
+        self.assertTrue((output_root / ".caseforge" / "web_output.json").exists())
+        self.assertTrue((output_root / "evidence.config.yaml").exists())
+        self.assertTrue((output_root / "package.json").exists())
+        self.assertTrue((output_root / "package-lock.json").exists())
+
+        build_web_draft(workspace_root=self.workspace, output_name="analysis-site")
+        third = draft_path_second.read_text(encoding="utf-8")
+        self.assertEqual(second, third)
 
     def test_build_web_draft_rejects_unsafe_output_name_path_traversal(self) -> None:
         with self.assertRaisesRegex(ValueError, "Invalid --output-name"):
@@ -303,6 +380,16 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
     def test_build_web_draft_rejects_unsafe_output_name_backslash_path(self) -> None:
         with self.assertRaisesRegex(ValueError, "Invalid --output-name"):
             build_web_draft(workspace_root=self.workspace, output_name="nested\\name")
+
+    def test_build_web_draft_fails_when_repo_runtime_scaffold_missing(self) -> None:
+        shutil.rmtree(self.root / "evidence-templates", ignore_errors=True)
+        with self.assertRaisesRegex(RuntimeError, "Local Evidence template not found"):
+            build_web_draft(workspace_root=self.workspace, output_name="analysis-site")
+
+    def test_build_web_draft_does_not_depend_on_templates_runtime_evidence_path(self) -> None:
+        self.assertFalse((Path(__file__).resolve().parent.parent / "templates" / "runtime" / "evidence").exists())
+        _, draft_path = build_web_draft(workspace_root=self.workspace, output_name="analysis-site")
+        self.assertTrue(draft_path.exists())
 
 
 if __name__ == "__main__":
