@@ -123,6 +123,8 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertIn("Built web draft:", stdout)
         self.assertTrue((workspace / "Sources" / "derived" / "sections_snapshot.json").exists())
         self.assertTrue((workspace / "WEB" / "analysis-site" / "pages" / "index.md").exists())
+        self.assertTrue((workspace / "WEB" / "analysis-site" / "evidence.config.yaml").exists())
+        self.assertTrue((workspace / "WEB" / "analysis-site" / ".caseforge" / "web_output.json").exists())
 
     def test_cli_build_web_draft_invalid_section_metadata_is_clean_system_exit(self) -> None:
         init_args = [

@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import re
+import shutil
 from pathlib import Path
 
-from .template_layers import TemplateSelection, write_case_template_metadata
+from .template_layers import (
+    TemplateLayerError,
+    TemplateSelection,
+    materialize_template_layers,
+    write_case_template_metadata,
+)
 from .util import now_stamp, slugify
 
 
@@ -402,13 +409,7 @@ def _validate_output_name(output_name: str) -> str:
     return candidate
 
 
-def build_web_draft(*, workspace_root: Path, output_name: str) -> tuple[Path, Path]:
-    output_name = _validate_output_name(output_name)
-
-    workspace_root = workspace_root.expanduser().resolve()
-    snapshot_path = write_sections_snapshot(workspace_root=workspace_root)
-    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
-
+def _compose_web_index_markdown(snapshot: dict[str, object]) -> str:
     lines: list[str] = [
         f"# {snapshot.get('title', '')}",
         "",
@@ -429,7 +430,81 @@ def build_web_draft(*, workspace_root: Path, output_name: str) -> tuple[Path, Pa
         else:
             lines.append("")
 
-    draft_path = workspace_root / "WEB" / output_name / "pages" / "index.md"
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _write_evidence_config_for_workspace_sources(*, output_root: Path, workspace_root: Path) -> Path:
+    sources_root = workspace_root / "Sources"
+    relative_db_path = Path(os.path.relpath(sources_root / "data" / "case.duckdb", output_root))
+
+    config_lines = [
+        "name: case",
+        "type: duckdb",
+        "options:",
+        f"  filename: {relative_db_path.as_posix()}",
+        "",
+    ]
+    config_path = output_root / "evidence.config.yaml"
+    config_path.write_text("\n".join(config_lines), encoding="utf-8")
+    return config_path
+
+
+def _write_web_output_manifest(
+    *,
+    workspace_root: Path,
+    output_root: Path,
+    output_name: str,
+    snapshot_path: Path,
+    manifest: dict[str, object],
+) -> Path:
+    web_meta_path = output_root / ".caseforge" / "web_output.json"
+    web_meta_path.parent.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "output_name": output_name,
+        "renderer": "evidence",
+        "built_at": _utc_iso_now(),
+        "template": str(manifest.get("primary_template") or "default"),
+        "features": [str(feature) for feature in (manifest.get("features") or [])],
+        "section_snapshot": Path(os.path.relpath(snapshot_path, output_root)).as_posix(),
+        "sources_root": Path(os.path.relpath(workspace_root / "Sources", output_root)).as_posix(),
+        "workspace_root": str(Path("..") / ".."),
+    }
+    web_meta_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return web_meta_path
+
+
+def build_web_draft(*, workspace_root: Path, output_name: str) -> tuple[Path, Path]:
+    output_name = _validate_output_name(output_name)
+
+    workspace_root = workspace_root.expanduser().resolve()
+    manifest = _read_workspace_manifest(workspace_root)
+    snapshot_path = write_sections_snapshot(workspace_root=workspace_root)
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+    output_root = workspace_root / "WEB" / output_name
+    if output_root.exists():
+        shutil.rmtree(output_root)
+    output_root.mkdir(parents=True, exist_ok=True)
+    try:
+        materialize_template_layers(
+            output_root,
+            template_name=str(manifest.get("primary_template") or "default"),
+            feature_names=[str(feature) for feature in (manifest.get("features") or [])],
+        )
+    except TemplateLayerError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+    _write_web_output_manifest(
+        workspace_root=workspace_root,
+        output_root=output_root,
+        output_name=output_name,
+        snapshot_path=snapshot_path,
+        manifest=manifest,
+    )
+    _write_evidence_config_for_workspace_sources(output_root=output_root, workspace_root=workspace_root)
+
+    draft_path = output_root / "pages" / "index.md"
     draft_path.parent.mkdir(parents=True, exist_ok=True)
-    draft_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    draft_path.write_text(_compose_web_index_markdown(snapshot), encoding="utf-8")
     return snapshot_path, draft_path

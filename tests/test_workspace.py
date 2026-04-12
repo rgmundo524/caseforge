@@ -265,6 +265,8 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         self.assertTrue(snapshot_path.exists())
         self.assertTrue(draft_path.exists())
         self.assertEqual(draft_path, self.workspace / "WEB" / "analysis-site" / "pages" / "index.md")
+        self.assertTrue((self.workspace / "WEB" / "analysis-site" / ".caseforge" / "web_output.json").exists())
+        self.assertTrue((self.workspace / "WEB" / "analysis-site" / "evidence.config.yaml").exists())
 
         draft = draft_path.read_text(encoding="utf-8")
         self.assertIn("# Test Case", draft)
@@ -274,10 +276,38 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         self.assertNotIn("## Conclusions", draft)
         self.assertIn("Document factual findings, supporting evidence, and notable analytical outcomes.", draft)
 
+    def test_build_web_draft_writes_output_manifest_with_template_features_and_relative_links(self) -> None:
+        build_web_draft(workspace_root=self.workspace, output_name="analysis-site")
+        output_root = self.workspace / "WEB" / "analysis-site"
+
+        manifest = json.loads((output_root / ".caseforge" / "web_output.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["output_name"], "analysis-site")
+        self.assertEqual(manifest["renderer"], "evidence")
+        self.assertEqual(manifest["template"], "default")
+        self.assertEqual(manifest["features"], ["cross-chain-activity", "urls"])
+        self.assertEqual(manifest["section_snapshot"], "../../Sources/derived/sections_snapshot.json")
+        self.assertEqual(manifest["sources_root"], "../../Sources")
+        self.assertEqual(manifest["workspace_root"], "../..")
+        self.assertTrue(manifest["built_at"].endswith("Z"))
+
+    def test_build_web_draft_points_evidence_config_to_workspace_sources_data(self) -> None:
+        build_web_draft(workspace_root=self.workspace, output_name="analysis-site")
+        output_root = self.workspace / "WEB" / "analysis-site"
+
+        evidence_config = (output_root / "evidence.config.yaml").read_text(encoding="utf-8")
+        self.assertIn("filename: ../../Sources/data/case.duckdb", evidence_config)
+        self.assertFalse((output_root / "data" / "case.duckdb").exists())
+        self.assertFalse((output_root / "Sources").exists())
+
     def test_build_web_draft_is_refresh_safe(self) -> None:
         _, draft_path = build_web_draft(workspace_root=self.workspace, output_name="analysis-site")
         self.assertTrue(draft_path.exists())
         first = draft_path.read_text(encoding="utf-8")
+
+        output_root = self.workspace / "WEB" / "analysis-site"
+        stale_path = output_root / "pages" / "stale.md"
+        stale_path.write_text("stale generated file\n", encoding="utf-8")
+        self.assertTrue(stale_path.exists())
 
         section_path = self.workspace / "Sections" / "case-background.md"
         updated = section_path.read_text(encoding="utf-8").replace(
@@ -291,6 +321,13 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         second = draft_path_second.read_text(encoding="utf-8")
         self.assertNotEqual(first, second)
         self.assertIn("Updated background content.", second)
+        self.assertFalse(stale_path.exists())
+        self.assertTrue((output_root / ".caseforge" / "web_output.json").exists())
+        self.assertTrue((output_root / "evidence.config.yaml").exists())
+
+        build_web_draft(workspace_root=self.workspace, output_name="analysis-site")
+        third = draft_path_second.read_text(encoding="utf-8")
+        self.assertEqual(second, third)
 
     def test_build_web_draft_rejects_unsafe_output_name_path_traversal(self) -> None:
         with self.assertRaisesRegex(ValueError, "Invalid --output-name"):
