@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 from pathlib import Path
 
 from .util import now_stamp, slugify
@@ -43,6 +44,21 @@ SECTION_SPECS = (
         "placement_key": "report.limitations",
         "prompt": "List investigative limitations, assumptions, and known data gaps.",
     },
+)
+REQUIRED_SECTION_KEYS = (
+    "section_id",
+    "title",
+    "content_class",
+    "placement_key",
+    "outputs",
+    "status",
+)
+REQUIRED_STRING_SECTION_KEYS = (
+    "section_id",
+    "title",
+    "content_class",
+    "placement_key",
+    "status",
 )
 
 
@@ -145,3 +161,216 @@ def init_workspace(
         )
 
     return workspace_root
+
+
+def _read_workspace_manifest(workspace_root: Path) -> dict[str, object]:
+    manifest_path = workspace_root / ".caseforge" / "workspace.json"
+    if not manifest_path.exists():
+        raise RuntimeError(f"Workspace manifest not found: {manifest_path}")
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def _parse_frontmatter_block(section_path: Path, text: str) -> tuple[str, str]:
+    if not text.startswith("---\n"):
+        raise ValueError(f"Section file is missing frontmatter block: {section_path}")
+    end_marker = "\n---\n"
+    end_idx = text.find(end_marker, 4)
+    if end_idx == -1:
+        raise ValueError(f"Section file has malformed frontmatter block: {section_path}")
+    frontmatter = text[4:end_idx]
+    if not frontmatter.strip():
+        raise ValueError(f"Section file has malformed frontmatter block: {section_path}")
+    body = text[end_idx + len(end_marker) :]
+    return frontmatter, body
+
+
+def _parse_simple_yaml_frontmatter(section_path: Path, frontmatter: str) -> dict[str, object]:
+    parsed: dict[str, object] = {}
+    current_list_key: str | None = None
+
+    for raw_line in frontmatter.splitlines():
+        if not raw_line.strip():
+            continue
+        if raw_line.startswith("  - "):
+            if current_list_key is None:
+                raise ValueError(f"Section file has malformed frontmatter block: {section_path}")
+            value = raw_line[4:].strip()
+            if not value:
+                raise ValueError(f"Section file has malformed frontmatter block: {section_path}")
+            parsed.setdefault(current_list_key, [])
+            casted = parsed[current_list_key]
+            if not isinstance(casted, list):
+                raise ValueError(f"Section file has malformed frontmatter block: {section_path}")
+            casted.append(value)
+            continue
+
+        match = re.match(r"^([A-Za-z0-9_]+):(.*)$", raw_line)
+        if not match:
+            raise ValueError(f"Section file has malformed frontmatter block: {section_path}")
+
+        key = match.group(1).strip()
+        value = match.group(2).strip()
+        if value:
+            parsed[key] = value
+            current_list_key = None
+        else:
+            parsed[key] = []
+            current_list_key = key
+
+    if not parsed:
+        raise ValueError(f"Section file has malformed frontmatter block: {section_path}")
+    return parsed
+
+
+def _parse_section_file(*, workspace_root: Path, section_path: Path) -> dict[str, object]:
+    text = section_path.read_text(encoding="utf-8")
+    frontmatter, body = _parse_frontmatter_block(section_path, text)
+    metadata = _parse_simple_yaml_frontmatter(section_path, frontmatter)
+
+    for required_key in REQUIRED_SECTION_KEYS:
+        if required_key not in metadata:
+            raise ValueError(f"Section file is missing required key '{required_key}': {section_path}")
+
+    outputs = metadata["outputs"]
+    if not isinstance(outputs, list) or any(not isinstance(item, str) or not item for item in outputs):
+        raise ValueError(f"Section file has invalid 'outputs' list: {section_path}")
+
+    for key in REQUIRED_STRING_SECTION_KEYS:
+        value = metadata[key]
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Section file has invalid '{key}': {section_path}")
+
+    section_id = metadata["section_id"]
+    title = metadata["title"]
+
+    return {
+        "filename": section_path.name,
+        "relative_path": f"Sections/{section_path.name}",
+        "section_id": section_id,
+        "title": title,
+        "content_class": metadata["content_class"],
+        "placement_key": metadata["placement_key"],
+        "outputs": outputs,
+        "status": metadata["status"],
+        "body_markdown": body,
+    }
+
+
+def _ordered_sections(sections: list[dict[str, object]]) -> list[dict[str, object]]:
+    canonical_index = {spec["section_id"]: idx for idx, spec in enumerate(SECTION_SPECS)}
+    ordered = sorted(
+        sections,
+        key=lambda item: (
+            0 if item["section_id"] in canonical_index else 1,
+            canonical_index.get(item["section_id"], 0),
+            str(item["filename"]),
+        ),
+    )
+    for idx, section in enumerate(ordered, start=1):
+        section["source_order"] = idx
+    return ordered
+
+
+def _build_sections_snapshot_payload(workspace_root: Path) -> dict[str, object]:
+    manifest = _read_workspace_manifest(workspace_root)
+    sections_dir = workspace_root / "Sections"
+    if not sections_dir.exists():
+        raise RuntimeError(f"Sections directory not found: {sections_dir}")
+
+    parsed_sections: list[dict[str, object]] = []
+    seen_section_ids: dict[str, str] = {}
+    for section_path in sorted(sections_dir.glob("*.md"), key=lambda p: p.name):
+        section = _parse_section_file(workspace_root=workspace_root, section_path=section_path)
+        section_id = str(section["section_id"])
+        if section_id in seen_section_ids:
+            raise ValueError(
+                f"Duplicate section_id '{section_id}' found in {seen_section_ids[section_id]} and {section_path}"
+            )
+        seen_section_ids[section_id] = str(section_path)
+        parsed_sections.append(section)
+
+    ordered_sections = _ordered_sections(parsed_sections)
+
+    return {
+        "schema_version": 1,
+        "snapshot_type": "sections_snapshot",
+        "workspace_type": "case_workspace",
+        "generated_at": _utc_iso_now(),
+        "case_id": manifest.get("case_id"),
+        "title": manifest.get("title"),
+        "primary_template": manifest.get("primary_template"),
+        "features": list(manifest.get("features", [])),
+        "sections": ordered_sections,
+    }
+
+
+def write_sections_snapshot(*, workspace_root: Path) -> Path:
+    workspace_root = workspace_root.expanduser().resolve()
+    snapshot = _build_sections_snapshot_payload(workspace_root)
+    snapshot_path = workspace_root / "Sources" / "derived" / "sections_snapshot.json"
+    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_path.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
+    return snapshot_path
+
+
+def _strip_leading_matching_h1(body_markdown: str, title: str) -> str:
+    lines = body_markdown.splitlines()
+    first_non_empty_idx = None
+    for idx, line in enumerate(lines):
+        if line.strip():
+            first_non_empty_idx = idx
+            break
+    if first_non_empty_idx is None:
+        return ""
+
+    if lines[first_non_empty_idx].strip() == f"# {title}":
+        del lines[first_non_empty_idx]
+        while first_non_empty_idx < len(lines) and not lines[first_non_empty_idx].strip():
+            del lines[first_non_empty_idx]
+    return "\n".join(lines).strip()
+
+
+def _validate_output_name(output_name: str) -> str:
+    candidate = output_name.strip()
+    if not candidate:
+        raise ValueError("--output-name must not be empty")
+    if candidate in {".", ".."}:
+        raise ValueError(f"Invalid --output-name '{output_name}': must be a single safe identifier")
+    if "/" in candidate or "\\" in candidate:
+        raise ValueError(f"Invalid --output-name '{output_name}': must be a single safe identifier")
+    if Path(candidate).name != candidate:
+        raise ValueError(f"Invalid --output-name '{output_name}': must be a single safe identifier")
+    return candidate
+
+
+def build_web_draft(*, workspace_root: Path, output_name: str) -> tuple[Path, Path]:
+    output_name = _validate_output_name(output_name)
+
+    workspace_root = workspace_root.expanduser().resolve()
+    snapshot_path = write_sections_snapshot(workspace_root=workspace_root)
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+    lines: list[str] = [
+        f"# {snapshot.get('title', '')}",
+        "",
+        "> Generated draft from case-authored sections snapshot.",
+        "",
+    ]
+    for section in snapshot.get("sections", []):
+        outputs = section.get("outputs", [])
+        if not isinstance(outputs, list) or "web" not in outputs:
+            continue
+        title = str(section.get("title", ""))
+        lines.append(f"## {title}")
+        lines.append("")
+        body = _strip_leading_matching_h1(str(section.get("body_markdown", "")), title)
+        if body:
+            lines.append(body)
+            lines.append("")
+        else:
+            lines.append("")
+
+    draft_path = workspace_root / "WEB" / output_name / "pages" / "index.md"
+    draft_path.parent.mkdir(parents=True, exist_ok=True)
+    draft_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return snapshot_path, draft_path

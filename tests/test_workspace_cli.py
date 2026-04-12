@@ -91,6 +91,97 @@ class WorkspaceCliTests(unittest.TestCase):
 
         self.assertIn("Workspace directory already exists", str(ctx.exception))
 
+    def test_cli_build_web_draft_success(self) -> None:
+        init_args = [
+            "init-workspace",
+            "--cases-home",
+            str(self.root),
+            "--case-id",
+            "12345",
+            "--title",
+            "Test Case",
+            "--template",
+            "default",
+        ]
+        self.assertEqual(workspace_cli.main(init_args), 0)
+        workspace = next(p for p in self.root.iterdir() if p.is_dir())
+
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = workspace_cli.main(
+                [
+                    "build-web-draft",
+                    "--workspace-root",
+                    str(workspace),
+                    "--output-name",
+                    "analysis-site",
+                ]
+            )
+
+        self.assertEqual(rc, 0)
+        stdout = out.getvalue()
+        self.assertIn("Built web draft:", stdout)
+        self.assertTrue((workspace / "Sources" / "derived" / "sections_snapshot.json").exists())
+        self.assertTrue((workspace / "WEB" / "analysis-site" / "pages" / "index.md").exists())
+
+    def test_cli_build_web_draft_invalid_section_metadata_is_clean_system_exit(self) -> None:
+        init_args = [
+            "init-workspace",
+            "--cases-home",
+            str(self.root),
+            "--case-id",
+            "12345",
+            "--title",
+            "Test Case",
+            "--template",
+            "default",
+        ]
+        self.assertEqual(workspace_cli.main(init_args), 0)
+        workspace = next(p for p in self.root.iterdir() if p.is_dir())
+        bad_file = workspace / "Sections" / "case-background.md"
+        bad_file.write_text("# Case Background\n\nBroken.\n", encoding="utf-8")
+
+        with self.assertRaises(SystemExit) as ctx:
+            workspace_cli.main(
+                [
+                    "build-web-draft",
+                    "--workspace-root",
+                    str(workspace),
+                    "--output-name",
+                    "analysis-site",
+                ]
+            )
+
+        self.assertIn("missing frontmatter block", str(ctx.exception))
+
+    def test_cli_build_web_draft_invalid_output_name_is_clean_system_exit(self) -> None:
+        init_args = [
+            "init-workspace",
+            "--cases-home",
+            str(self.root),
+            "--case-id",
+            "12345",
+            "--title",
+            "Test Case",
+            "--template",
+            "default",
+        ]
+        self.assertEqual(workspace_cli.main(init_args), 0)
+        workspace = next(p for p in self.root.iterdir() if p.is_dir())
+
+        with self.assertRaises(SystemExit) as ctx:
+            workspace_cli.main(
+                [
+                    "build-web-draft",
+                    "--workspace-root",
+                    str(workspace),
+                    "--output-name",
+                    "../outside",
+                ]
+            )
+
+        self.assertIn("Invalid --output-name", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
