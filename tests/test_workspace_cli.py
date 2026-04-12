@@ -182,6 +182,138 @@ class WorkspaceCliTests(unittest.TestCase):
 
         self.assertIn("Invalid --output-name", str(ctx.exception))
 
+    def test_cli_add_files_delegates_to_sources_case_root(self) -> None:
+        self.assertEqual(
+            workspace_cli.main(
+                [
+                    "init-workspace",
+                    "--cases-home",
+                    str(self.root),
+                    "--case-id",
+                    "12345",
+                    "--title",
+                    "Test Case",
+                    "--template",
+                    "default",
+                ]
+            ),
+            0,
+        )
+        workspace = next(p for p in self.root.iterdir() if p.is_dir())
+
+        sample = self.root / "sample.csv"
+        sample.write_text("a,b\n1,2\n", encoding="utf-8")
+
+        with patch("caseforge.workspace_cli.add_files") as add_files_mock:
+            self.assertEqual(
+                workspace_cli.main(
+                    [
+                        "add-files",
+                        "--workspace-root",
+                        str(workspace),
+                        "--source",
+                        "trm",
+                        "--model",
+                        "account",
+                        str(sample),
+                    ]
+                ),
+                0,
+            )
+
+        kwargs = add_files_mock.call_args.kwargs
+        self.assertEqual(kwargs["case_root"], workspace / "Sources")
+        self.assertEqual(kwargs["source_system"], "trm")
+        self.assertEqual(kwargs["tx_model"], "account")
+        self.assertEqual(kwargs["export_type"], "trm")
+        self.assertEqual(kwargs["files"], [sample.resolve()])
+
+    def test_cli_normalize_delegates_to_sources_case_root(self) -> None:
+        self.assertEqual(
+            workspace_cli.main(
+                [
+                    "init-workspace",
+                    "--cases-home",
+                    str(self.root),
+                    "--case-id",
+                    "12345",
+                    "--title",
+                    "Test Case",
+                    "--template",
+                    "default",
+                ]
+            ),
+            0,
+        )
+        workspace = next(p for p in self.root.iterdir() if p.is_dir())
+
+        with patch("caseforge.workspace_cli.normalize_db") as normalize_mock:
+            self.assertEqual(
+                workspace_cli.main(
+                    [
+                        "normalize",
+                        "--workspace-root",
+                        str(workspace),
+                    ]
+                ),
+                0,
+            )
+
+        kwargs = normalize_mock.call_args.kwargs
+        self.assertEqual(kwargs["case_root"], workspace / "Sources")
+        self.assertEqual(kwargs["duckdb_bin"], "duckdb")
+
+    def test_cli_build_db_delegates_to_sources_case_root_and_disables_sources_flag(self) -> None:
+        self.assertEqual(
+            workspace_cli.main(
+                [
+                    "init-workspace",
+                    "--cases-home",
+                    str(self.root),
+                    "--case-id",
+                    "12345",
+                    "--title",
+                    "Test Case",
+                    "--template",
+                    "default",
+                ]
+            ),
+            0,
+        )
+        workspace = next(p for p in self.root.iterdir() if p.is_dir())
+
+        with patch("caseforge.workspace_cli.build_db") as build_mock:
+            self.assertEqual(
+                workspace_cli.main(
+                    [
+                        "build-db",
+                        "--workspace-root",
+                        str(workspace),
+                    ]
+                ),
+                0,
+            )
+
+        kwargs = build_mock.call_args.kwargs
+        self.assertEqual(kwargs["case_root"], workspace / "Sources")
+        self.assertEqual(kwargs["duckdb_bin"], "duckdb")
+        self.assertFalse(kwargs["run_sources"])
+
+    def test_cli_workspace_command_missing_manifest_fails_cleanly(self) -> None:
+        bad_workspace = self.root / "bad-workspace"
+        (bad_workspace / "Sources").mkdir(parents=True)
+
+        with self.assertRaises(SystemExit) as ctx:
+            workspace_cli.main(
+                [
+                    "normalize",
+                    "--workspace-root",
+                    str(bad_workspace),
+                ]
+            )
+
+        self.assertIn("Workspace manifest not found", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,7 +6,12 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from caseforge.workspace import build_web_draft, init_workspace, write_sections_snapshot
+from caseforge.workspace import (
+    build_web_draft,
+    ensure_workspace_sources_engine_bridge,
+    init_workspace,
+    write_sections_snapshot,
+)
 
 
 class WorkspaceInitTests(unittest.TestCase):
@@ -29,6 +34,12 @@ class WorkspaceInitTests(unittest.TestCase):
         self.assertTrue(workspace.exists())
         self.assertTrue((workspace / "Sections").is_dir())
         self.assertTrue((workspace / "Sources").is_dir())
+        self.assertTrue((workspace / "Sources" / "data").is_dir())
+        self.assertTrue((workspace / "Sources" / "data" / "raw").is_dir())
+        self.assertTrue((workspace / "Sources" / "derived").is_dir())
+        self.assertTrue((workspace / "Sources" / "config").is_dir())
+        self.assertTrue((workspace / "Sources" / "data" / "manifest.json").exists())
+        self.assertTrue((workspace / "Sources" / "config" / "caseforge.json").exists())
         self.assertTrue((workspace / "WEB").is_dir())
         self.assertTrue((workspace / "PDF").is_dir())
         manifest_path = workspace / ".caseforge" / "workspace.json"
@@ -43,6 +54,13 @@ class WorkspaceInitTests(unittest.TestCase):
         self.assertEqual(manifest["features"], ["cross-chain-activity", "urls"])
         self.assertEqual(manifest["status"], "initialized")
         self.assertTrue(manifest["created_at"].endswith("Z"))
+
+        sources_manifest = json.loads((workspace / "Sources" / "data" / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(sources_manifest["schema_version"], 2)
+        self.assertEqual(sources_manifest["files"], [])
+
+        sources_config = json.loads((workspace / "Sources" / "config" / "caseforge.json").read_text(encoding="utf-8"))
+        self.assertEqual(sources_config, {"template": "default", "features": ["cross-chain-activity", "urls"]})
 
     def test_seeded_sections_frontmatter(self) -> None:
         workspace = init_workspace(
@@ -151,6 +169,32 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         self.assertEqual(first["outputs"], ["web", "pdf"])
         self.assertEqual(first["status"], "draft")
         self.assertIn("# Case Background", first["body_markdown"])
+
+    def test_engine_bridge_sync_repairs_missing_or_stale_config_without_clobbering_manifest(self) -> None:
+        manifest_path = self.workspace / "Sources" / "data" / "manifest.json"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "updated_at": "2026-01-01T00:00:00+00:00",
+                    "files": [{"file_id": "existing_file"}],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        config_path = self.workspace / "Sources" / "config" / "caseforge.json"
+        config_path.write_text(json.dumps({"template": "wrong", "features": []}) + "\n", encoding="utf-8")
+
+        ensure_workspace_sources_engine_bridge(workspace_root=self.workspace)
+
+        updated_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(updated_manifest["files"], [{"file_id": "existing_file"}])
+
+        updated_config = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(updated_config, {"template": "default", "features": ["cross-chain-activity", "urls"]})
 
     def test_write_sections_snapshot_missing_frontmatter_fails_cleanly(self) -> None:
         bad_file = self.workspace / "Sections" / "conclusions.md"

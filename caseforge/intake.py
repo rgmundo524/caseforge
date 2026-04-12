@@ -110,10 +110,14 @@ def _save_manifest(case_root: Path, manifest: Dict[str, Any]) -> None:
 
 
 def assert_case_root(case_root: Path) -> None:
-    if not (case_root / "package.json").exists():
-        raise RuntimeError(f"Not a case repo (missing package.json): {case_root}")
-    if not (case_root / "pages").exists():
-        raise RuntimeError(f"Not a case repo (missing pages/): {case_root}")
+    is_legacy_repo = (case_root / "package.json").exists() and (case_root / "pages").exists()
+    is_workspace_sources_root = (case_root / "config" / "caseforge.json").exists() and (case_root / "data").exists()
+    if is_legacy_repo or is_workspace_sources_root:
+        return
+    raise RuntimeError(
+        "Not a compatible case root "
+        f"(expected legacy package/pages or workspace Sources config/data): {case_root}"
+    )
 
 
 @dataclass(frozen=True)

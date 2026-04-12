@@ -5,6 +5,7 @@ import json
 import re
 from pathlib import Path
 
+from .template_layers import TemplateSelection, write_case_template_metadata
 from .util import now_stamp, slugify
 
 
@@ -94,6 +95,62 @@ def _manifest_payload(*, case_id: str, title: str, template: str, features: list
     }
 
 
+def workspace_sources_case_root(*, workspace_root: Path) -> Path:
+    return workspace_root / "Sources"
+
+
+def _engine_config_payload_from_workspace_manifest(manifest: dict[str, object]) -> dict[str, object]:
+    return {
+        "template": str(manifest.get("primary_template") or "default"),
+        "features": [str(feature) for feature in (manifest.get("features") or [])],
+    }
+
+
+def _default_engine_manifest_payload() -> dict[str, object]:
+    now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    return {
+        "schema_version": 2,
+        "created_at": now,
+        "updated_at": now,
+        "files": [],
+    }
+
+
+def ensure_workspace_sources_engine_bridge(*, workspace_root: Path) -> Path:
+    workspace_root = workspace_root.expanduser().resolve()
+    manifest = _read_workspace_manifest(workspace_root)
+    sources_root = workspace_sources_case_root(workspace_root=workspace_root)
+
+    (sources_root / "data" / "raw").mkdir(parents=True, exist_ok=True)
+    (sources_root / "derived").mkdir(parents=True, exist_ok=True)
+    (sources_root / "config").mkdir(parents=True, exist_ok=True)
+
+    engine_manifest_path = sources_root / "data" / "manifest.json"
+    if not engine_manifest_path.exists():
+        engine_manifest_path.write_text(json.dumps(_default_engine_manifest_payload(), indent=2) + "\n", encoding="utf-8")
+
+    desired_config = _engine_config_payload_from_workspace_manifest(manifest)
+    config_path = sources_root / "config" / "caseforge.json"
+    current_config: dict[str, object] | None = None
+    if config_path.exists():
+        try:
+            parsed = json.loads(config_path.read_text(encoding="utf-8"))
+            if isinstance(parsed, dict):
+                current_config = parsed
+        except json.JSONDecodeError:
+            current_config = None
+    if current_config != desired_config:
+        write_case_template_metadata(
+            sources_root,
+            TemplateSelection(
+                template_name=str(desired_config["template"]),
+                feature_names=tuple(str(feature) for feature in desired_config["features"]),
+            ),
+        )
+
+    return sources_root
+
+
 def _section_text(*, section_id: str, title: str, placement_key: str, prompt: str) -> str:
     return (
         "---\n"
@@ -159,6 +216,8 @@ def init_workspace(
             ),
             encoding="utf-8",
         )
+
+    ensure_workspace_sources_engine_bridge(workspace_root=workspace_root)
 
     return workspace_root
 
