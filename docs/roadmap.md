@@ -1,189 +1,253 @@
-# CaseForge Workspace Redesign Roadmap
+# CaseForge Roadmap
 
 Branch: `case-manager`
 
-## Purpose
+## Why this roadmap changed
 
-This branch exists to evolve CaseForge from a one-shot Evidence case generator into a persistent case workspace system.
+The redesign started as a workspace refactor, but manual smoke testing exposed several higher-level product decisions that are more important than simple renderer plumbing:
 
-The current repository already has a strong ingestion and analytical core:
-- case scaffolding
-- raw evidence registration
-- SQL-first normalization
-- downstream analytical view construction
-- Evidence source extraction
+- features cannot be fixed forever at workspace initialization
+- the analysis site and report site are not the same product
+- canonical authored report content should stay renderer-neutral
+- computed figures/tables/metrics need a shared abstraction across WEB and PDF
+- PDF, API, and UI depend on those contracts and should not be designed first
 
-The redesign does **not** throw that work away. It wraps that engine inside a broader case lifecycle model with persistent workspaces, investigator-authored sections, and multiple output targets.
+Because of that, the roadmap is now organized into **tracks** rather than fragile sequential milestone numbers.
 
-## Product Reframing
+## Track A — Foundation and validated baseline
 
-CaseForge should become:
+**Status:** complete
 
-- the place an investigation begins
-- the persistent workspace for the investigation while it is active
-- the place structured evidence is ingested and normalized
-- the place investigator-authored report sections are maintained
-- the system that generates web and PDF outputs from shared sources
-- the place the investigation is finalized
+Accepted work in this track:
 
-CaseForge should **not** remain defined primarily as:
-- a single CLI session
-- a generator for standalone Evidence projects
-- a tool whose only meaningful output is an Evidence website
+- redesign branch and initial architecture docs
+- persistent case workspace scaffold
+- section seeding and section snapshot baseline
+- `Sources/` bridge to the existing engine
+- runnable WEB bootstrap using shared standalone Evidence bootstrap logic
+- WEB runtime/content boundary cleanup
+- fresh manual end-to-end smoke validation
 
-## Core Principles
+What is now considered stable:
 
-1. **Case workspace first**
-   - A case is a persistent workspace, not only an output site.
+- `Sections/` exists as canonical narrative source space
+- `Sources/` works as the canonical data/build substrate
+- `WEB/` builds a runnable Evidence output
+- the existing engine remains reusable through workspace wrappers
 
-2. **Authoring and rendering are separate**
-   - Investigators author source content.
-   - Renderers consume authored content plus structured data.
+## Track B — Feature lifecycle and output profiles
 
-3. **Shared source model**
-   - Web and PDF outputs should be generated from the same canonical case inputs.
+**Status:** next priority
 
-4. **Snapshots over live dependencies**
-   - Outputs should be reproducible from case-local snapshots rather than depending on mutable external state.
+Purpose:
+- move feature control out of workspace initialization and into a workspace config
+- define output profiles explicitly
+- clarify rebuild and invalidation rules when features change
 
-5. **Incremental transition**
-   - The existing ingestion / DuckDB / Evidence logic is reused and adapted rather than rewritten all at once.
+Planned milestones:
 
-## Target Workspace Shape
+### B1. Config-driven feature state
+Introduce a canonical YAML config file under `.caseforge/` describing:
+- active features
+- per-feature settings
+- output profile settings
+- policies such as strict validation
 
-At a minimum, each case workspace will contain:
+### B2. Output profiles
+Define at least:
+- `analysis_site`
+- `report_site`
+- `pdf_report`
 
-- `Sections/` — investigator-authored markdown source content
-- `Sources/` — raw evidence, DuckDB, manifests, snapshots, and analytical build artifacts
-- `WEB/` — generated web output(s)
-- `PDF/` — generated PDF/LaTeX output(s)
+### B3. Feature classes
+Define feature categories such as:
+- analysis features
+- authoring/section seeding features
+- intake/normalization features
+- output-only features
+- OSINT features
+- cyber/infrastructure features
 
-Potential future additions:
-- `config/`
-- `logs/`
-- `exports/`
-- `reference/`
+### B4. Rebuild rules
+Document what must rerun when:
+- raw exports change
+- sections change
+- features are enabled or disabled
+- output profile settings change
 
-## Planned Milestones
+### B5. Safe disable semantics
+Disabling a feature must remove generated analysis/output behavior without silently deleting investigator-authored content.
 
-### Milestone 0 — Architectural foundation
-Goal:
-- establish redesign docs
-- capture intentional decisions
-- define the first vertical slice
+## Track C — Analysis output system
 
-Deliverables:
-- roadmap
-- architecture overview
-- decision records
-- explicitly scoped first prototype
+**Status:** after Track B
 
-### Milestone 1 — Workspace scaffolding
-Goal:
-- create a persistent case workspace instead of a standalone Evidence project
+Purpose:
+- make the analysis site independent of investigator-authored narrative sections
+- treat the analysis site as a generated operational workspace during active investigation
 
-Deliverables:
-- case workspace generator
-- `Sections/`, `Sources/`, `WEB/`, `PDF/`
-- initial workspace metadata / manifest
-- template-driven section scaffolding
+Planned milestones:
 
-### Milestone 2 — Canonical section model
-Goal:
-- establish investigator-authored section files as canonical narrative inputs
+### C1. Standard analysis baseline
+Always include core analysis pages and queries.
 
-Deliverables:
-- section frontmatter conventions
-- section identity / placement metadata
-- section parsing and validation
-- case-local section snapshot build step
+### C2. Feature-contributed analysis
+Enabled features can contribute:
+- SQL/views
+- sources
+- generated Evidence pages
+- reusable computed blocks
 
-### Milestone 3 — Adapt existing data engine into `Sources/`
-Goal:
-- preserve and relocate the current ingestion / normalization / build pipeline into the workspace model
+### C3. Analysis-site profile build
+`build-web-draft --profile analysis_site` should produce a generated analysis site from:
+- current feature set
+- current DuckDB state
+- standard/generated analysis pages
 
-Deliverables:
-- raw evidence registration in `Sources/`
-- case-local DuckDB in `Sources/`
-- analytical build pipeline still producing core transaction views
-- test/debug support preserved
+### C4. Ownership boundary
+Clarify which analysis pages are always generated, feature-generated, or later injected into other outputs.
 
-### Milestone 4 — First web renderer
-Goal:
-- generate one Evidence-based web output from `Sections/` + `Sources/`
+## Track D — Narrative/report composition model
 
-Deliverables:
-- renderer adapter for a single web output
-- section placement logic
-- section + data composition model
-- regeneration path when sections or sources change
+**Status:** after Track B, parallel with or just after Track C
 
-### Milestone 5 — API-first orchestration
-Goal:
-- move from CLI-only orchestration to an API-backed application model
+Purpose:
+- make report-style outputs react to the investigator-authored section tree
+- keep canonical narrative content renderer-neutral
 
-Deliverables:
-- FastAPI backend
-- crude front-end for workspace creation and build operations
-- persistent case state tracking
-- CLI retained as secondary developer/operator interface
+Planned milestones:
 
-### Milestone 6 — PDF / LaTeX renderer
-Goal:
-- support PDF output from the same canonical case sources
+### D1. Filesystem-first section tree
+`Sections/` path defines narrative hierarchy.
 
-Deliverables:
-- LaTeX adapter
-- renderer-specific templates
-- output selection and regeneration rules
+### D2. `index.md` and sibling semantics
+Define:
+- folder = page/section node
+- `index.md` = page lead/body
+- sibling `.md` files = ordered blocks on a page
+- subfolders = child pages
 
-### Milestone 7 — Optional reference knowledge integration
-Goal:
-- enrich cases from controlled reference notes / knowledge sources
+### D3. Frontmatter as override
+Frontmatter refines title, order, outputs, and optional placement overrides.
 
-Deliverables:
-- reference snapshot ingestion
-- service / boilerplate / playbook surfaces
-- reproducible case-local knowledge snapshot behavior
+### D4. Fallback behavior
+If placement cannot be resolved, do not silently drop authored content.
 
-## First Vertical Slice
+### D5. Report-site build profile
+`build-web-draft --profile report_site` should build a narrative/report website from the section tree plus selected analysis content.
 
-The first prototype should prove only this:
+## Track E — Shared computed block system
 
-1. create case workspace
-2. scaffold `Sections/`, `Sources/`, `WEB/`, `PDF/`
-3. create a small set of section files from templates
-4. ingest one sample evidence dataset into `Sources/`
-5. build one Evidence web output from:
-   - case-authored section content
-   - structured case data
-6. expose the flow through a thin FastAPI endpoint set
+**Status:** after D begins
 
-If this slice works, the redesign is viable.
+Purpose:
+- provide a renderer-neutral way to reference figures, tables, metrics, and other computed content from canonical markdown
 
-## Explicit Non-Goals for the First Slice
+Planned milestones:
 
-Not in scope for the first slice:
-- full PDF rendering
-- final multi-user permission model
-- perfect front-end UX
-- complete Obsidian integration strategy
-- full section schema for every future report type
-- replacing every CLI path immediately
+### E1. Block registry
+Features and core analysis register named blocks.
 
-## Branch Strategy
+### E2. Canonical directives
+Introduce CaseForge directives such as:
+- `cf.metric`
+- `cf.table`
+- `cf.figure`
 
-- `main` remains the stable current-generation system.
-- `case-manager` is the long-lived redesign branch.
-- Work on this branch should be organized around vertical slices, not broad unbounded rewrites.
-- Existing working analytical logic should be migrated into the new shape deliberately rather than discarded.
+### E3. WEB adapter
+Map those directives to Evidence-native output.
 
-## Open Questions To Revisit Later
+### E4. PDF adapter
+Map the same directives to PDF/LaTeX-compatible output.
 
-- exact frontmatter schema for sections
-- exact section placement/composition mechanism
-- shared knowledge vault vs per-case authoring workspace rules
-- renderer registration model
-- stale-build detection rules
-- multi-user access model
-- deployment model
+## Track F — Obsidian compatibility
+
+**Status:** later, after Tracks D and E are stable
+
+Purpose:
+- allow canonical authored sections to take advantage of useful Obsidian ergonomics without making renderers depend on Obsidian itself
+
+Planned milestones:
+
+### F1. Limited syntax support
+Support a controlled subset such as:
+- `[[Note]]`
+- `![[Note]]`
+
+### F2. Snapshot-time resolution
+Resolve links/embeds during ingestion or snapshot generation.
+
+### F3. Optional plugin later
+Potential future work:
+- validation helpers
+- placement autocomplete
+- local preview helpers
+
+## Track G — PDF renderer
+
+**Status:** later, after D and E
+
+Purpose:
+- build PDF outputs from the same canonical section tree and computed block system
+
+Planned milestones:
+
+### G1. PDF output profile
+Define `pdf_report` behavior explicitly.
+
+### G2. PDF bootstrap/runtime
+Create a stable PDF runtime/bootstrap model.
+
+### G3. Narrative composition in PDF
+Use the same canonical narrative tree.
+
+### G4. Computed block rendering in PDF
+Use the same block registry/directive model established for WEB.
+
+## Track H — State, snapshots, API, and UI
+
+**Status:** later
+
+Purpose:
+- make the persistent workspace experience visible and operable without changing the canonical source-of-truth model
+
+Planned milestones:
+
+### H1. Workspace/build state tracking
+Track stale outputs, feature changes, build timestamps, and snapshots.
+
+### H2. Snapshot/freeze model
+Support preserving specific investigation points in time.
+
+### H3. FastAPI backend
+Build the orchestration layer after config/state contracts are stable.
+
+### H4. UI
+Build on top of the stable config/state model rather than becoming the source of truth.
+
+## Superseded assumptions
+
+The following older assumptions are now considered obsolete:
+
+1. **Features are chosen once at workspace init**
+   - superseded by config-driven feature lifecycle
+
+2. **Analysis site depends on authored narrative sections**
+   - superseded by separate analysis vs report output profiles
+
+3. **Exact slot matching is the primary placement model**
+   - superseded by filesystem-first narrative composition with frontmatter as override
+
+4. **Canonical sections may become Evidence-native**
+   - superseded by renderer-neutral computed block directives
+
+5. **FastAPI/UI should be implemented immediately after WEB baseline**
+   - superseded by the need to stabilize feature/output/content contracts first
+
+## Immediate next work
+
+The next code track should start with **Track B**:
+
+1. define the YAML feature config contract
+2. implement config-driven feature and output profile loading
+3. keep the existing validated baseline intact while the case becomes dynamically configurable

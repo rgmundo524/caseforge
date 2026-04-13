@@ -1,223 +1,219 @@
-# CaseForge Workspace Architecture
+# CaseForge Architecture
 
 ## Overview
 
-CaseForge is evolving from a generator of standalone Evidence projects into a persistent case workspace system.
+CaseForge is evolving from a generator of standalone Evidence case sites into a persistent investigation workspace system.
 
-The new architecture separates:
+The architecture now separates:
 
-- human-authored case content
-- structured evidence and analytical data
-- output renderers
+- canonical narrative authorship
+- canonical structured evidence and analytical data
+- generated renderer outputs
+- dynamic case capabilities (features)
 
-This allows one case to produce multiple outputs while preserving a shared canonical source model.
+This separation is what allows one case to produce different outputs at different times without losing reproducibility.
 
-## Architectural Thesis
+## System thesis
 
 A case is **not**:
 - only an Evidence project
-- only an Obsidian vault
 - only a PDF project
+- only an Obsidian vault
 
 A case **is**:
-- a persistent workspace containing authored content, structured evidence, and generated outputs
+- a persistent workspace containing authored content, structured data, configuration, and generated outputs
 
-## Top-Level Workspace Model
+## Top-level workspace model
 
 Each case workspace contains four primary areas:
 
 ### `Sections/`
-Canonical investigator-authored markdown source content.
+Canonical investigator-authored narrative content.
 
-Purpose:
-- hold narrative and interpretive content that cannot be fully automated
-- preserve editable human-authored source material
-- act as the semantic source for report sections
-
-Examples:
+This is where case-specific prose lives:
 - case background
 - client narrative
-- investigative findings
-- methodology notes
-- limitations
+- findings
 - conclusions
-- custom appendix fragments
+- limitations
+- appendix narrative
+- future custom report sections
+
+`Sections/` is the authored truth for narrative/report content.
 
 ### `Sources/`
 Canonical structured substrate for the case.
 
-Purpose:
-- hold raw evidence inputs
-- hold case DuckDB and manifests
-- hold parsed section snapshots
-- hold analytical tables/views
-- hold test/debug artifacts
-- provide the shared data/query layer for renderers
+This is where the case data engine operates:
+- raw exports
+- manifests
+- `case.duckdb`
+- normalized views/tables
+- analytical helper views
+- derived snapshots such as section snapshots
 
-Examples:
-- raw CSV exports
-- manifest files
-- case DuckDB
-- normalized and final views
-- reference snapshots
-- validation outputs
+`Sources/` is the shared data/query layer for all outputs.
 
 ### `WEB/`
-Generated web output workspace(s).
+Generated Evidence outputs.
 
-Purpose:
-- materialize one or more web render targets
-- contain renderer-specific generated files
-- avoid acting as the primary authoring source
+These are not the primary authoring surface. They are generated artifacts that consume:
+- `Sections/`
+- `Sources/`
+- output profile rules
+- feature-contributed pages/sources
 
-Examples:
-- Evidence-based analysis site
-- exchange-notification site
-- internal review site
+At least two WEB output profiles are expected:
+- `analysis_site`
+- `report_site`
 
 ### `PDF/`
-Generated PDF output workspace(s).
+Future generated PDF outputs.
 
-Purpose:
-- materialize one or more PDF/LaTeX render targets
-- keep renderer-specific formatting concerns out of canonical source content
+These will later consume the same canonical section tree and computed block system as WEB, but through a different renderer.
 
+## Configuration model
+
+The workspace is controlled by config files under `.caseforge/`.
+
+The next major config contract is a YAML feature/output config that will describe:
+- active features
+- per-feature settings
+- output profiles
+- validation and lifecycle policies
+
+That config should be the canonical editable state for dynamic feature control. A future UI may edit it, but it should not replace it.
+
+## Feature model
+
+Features are dynamic case capabilities, not one-time immutable choices.
+
+A feature may contribute:
+- SQL/views
+- Evidence source queries
+- generated WEB pages
+- section seeds/prompts
+- reusable computed blocks
+- future PDF fragments
+
+Features are therefore different from renderers:
+- a feature says what a case can do
+- an output profile says what a particular generated output should include
+
+## Output profiles
+
+Output profiles are first-class.
+
+### `analysis_site`
+The analysis site is generated from:
+- standard analysis
+- enabled feature analysis
+- DuckDB-backed data and source queries
+
+It should **not** depend on whether the investigator has authored matching narrative sections.
+
+### `report_site`
+The report site is generated from:
+- the investigator-authored section tree
+- selected generated analysis content
+- the same shared case data in `Sources/`
+
+### `pdf_report`
+The future PDF report should consume the same canonical section tree and computed block system as the report site.
+
+## Composition model
+
+### Narrative composition
+Narrative/report outputs should use a filesystem-first composition model:
+- folder path defines page hierarchy
+- `index.md` defines the page lead/body
+- sibling markdown files define ordered blocks on that page
+- subfolders define child pages
+- frontmatter refines the structure
+
+This gives investigators simple control via the file tree instead of requiring template edits for every new section.
+
+### Analysis composition
+Analysis outputs are generated from:
+- standard pages
+- feature-contributed pages
+- feature-contributed source queries
+- shared data in `Sources/`
+
+They are not blocked by missing narrative sections.
+
+## Computed content model
+
+Canonical section files should remain renderer-neutral.
+
+To support figures, tables, metrics, and similar computed objects, CaseForge will use a shared directive system in canonical markdown rather than raw Evidence-native syntax.
+
+Examples (future contract):
+- `cf.metric`
+- `cf.table`
+- `cf.figure`
+
+Those directives will resolve through a shared block registry and then render differently for WEB and PDF.
+
+This avoids turning canonical sections into Evidence-native documents and keeps PDF feasible.
+
+## WEB bootstrap model
+
+WEB output should reuse the same standalone Evidence bootstrap seam already used by the legacy standalone case generation path.
+
+CaseForge should **not** maintain a separate mini Evidence runtime inside the repository.
+
+The correct boundary is:
+- Evidence bootstrap creates a runnable runtime root
+- CaseForge owns `pages/` and `sources/` content after bootstrap
+- `evidence.config.yaml` and datasource linkage are then updated to point at shared case data in `Sources/`
+
+## Ownership boundary in WEB outputs
+
+### Bootstrap-owned runtime files
 Examples:
-- full report
-- client-facing summary
-- appendix-only packet
-- service notification letter
+- `package.json`
+- `package-lock.json`
+- `.npmrc`
+- `degit.json`
+- runtime scripts
 
-## Content Classes
+### CaseForge-owned generated content
+Examples:
+- `pages/`
+- `sources/`
+- `.caseforge/web_output.json`
+- generated narrative/report pages
+- generated source connections pointing back to `Sources/data/case.duckdb`
 
-The architecture centers on three content classes.
+## Investigation lifecycle
 
-### 1. Authored source content
-Owned by investigators.
-Primary home: `Sections/`
+A live case is expected to rebuild often.
 
-Characteristics:
-- rich markdown
-- semantic sections
-- frontmatter metadata
-- case-specific nuance
-- not expected to be fully automated
-
-### 2. Structured analytical/query data
-Owned by CaseForge’s data engine.
-Primary home: `Sources/`
-
-Characteristics:
-- raw inputs
-- normalized tables/views
-- analytical views
-- reference snapshots
-- queryable and reproducible
-
-### 3. Renderer-specific templates/adapters
-Owned by output layers.
-Primary homes: `WEB/` and `PDF/`
-
-Characteristics:
-- presentation logic
-- layout/placement rules
-- output wrappers
-- should consume authored content + structured data
-- should not become the canonical authorship surface
-
-## Composition Model
-
-Renderers compose outputs from two primary inputs:
-
-- `Sections/` -> authored content
-- `Sources/` -> structured/queryable data
-
-A renderer may also use:
-- renderer-specific template files
-- shared common fragments
-- feature-specific output definitions
-
-But the key rule is:
-
-**Renderers consume canonical inputs. They do not define canonical truth.**
-
-## Case Lifecycle
-
-A case should move through a persistent lifecycle rather than a single command run.
-
-High-level lifecycle:
-
+Typical cycle:
 1. create workspace
-2. scaffold sections from templates/features
-3. ingest raw evidence into `Sources/`
-4. build or refresh case DuckDB
-5. snapshot/validate authored sections
-6. generate one or more outputs
-7. revise sections and regenerate as the case evolves
-8. finalize outputs
+2. add or replace raw exports
+3. normalize
+4. build database
+5. update sections if needed
+6. build analysis site and/or report site
+7. repeat while the investigation evolves
+8. snapshot/finalize outputs when needed
 
-## State and Persistence
+This means the architecture should optimize for repeated rebuilds and explicit configuration, not a single one-shot generation event.
 
-The system should track more than files.
+## Obsidian role
 
-CaseForge should know:
-- template/features selected
-- which section files exist
-- which evidence files are registered
-- when the DuckDB was last rebuilt
-- whether outputs are stale relative to sections/sources
-- which outputs have been generated
-- whether investigator-authored content changed since the last build
+Obsidian remains an authoring environment, not the renderer.
 
-This implies an explicit case-state model in addition to filesystem layout.
+CaseForge should later support a controlled subset of Obsidian-friendly syntax (links and embeds) during snapshot/build, while keeping renderers independent of Obsidian itself.
 
-## API and CLI Roles
+## Migration principle
 
-### FastAPI
-Primary orchestration layer.
-
-Responsibilities:
-- create/open/list cases
-- scaffold sections
-- register evidence files
-- trigger builds
-- expose case state
-- support future UI flows
-
-### CLI
-Secondary operator/developer tool.
-
-Responsibilities:
-- debugging
-- automation
-- testing
-- direct scripting
-- parity for selected operations where useful
-
-The CLI remains valuable, but it no longer defines the whole product.
-
-## Obsidian Role
-
-Obsidian is a useful authoring environment for markdown source content.
-
-CaseForge should treat Obsidian-compatible markdown as:
-- an authoring surface
-- a note-navigation environment
-- a source of investigator-edited section content
-
-CaseForge should **not** treat live renderer directories as the only authoring source.
-
-The architecture should preserve the ability to:
-- edit case sections in Obsidian
-- snapshot those sections into case-local structured artifacts
-- render outputs from the snapshots and shared analytical layer
-
-## Migration Principle
-
-The current CaseForge repository already contains valuable working subsystems:
-- template layering
+The redesign should preserve and reuse existing subsystems where possible:
 - raw evidence registration
 - normalization/build pipeline
-- Evidence source extraction
+- template layering
+- shared standalone Evidence bootstrap seam
 
-The redesign should preserve those subsystems where possible and relocate them into the new workspace model rather than replacing them wholesale.
+The redesign is therefore a reorganization around a stronger case model, not a wholesale discard of the existing engine.
