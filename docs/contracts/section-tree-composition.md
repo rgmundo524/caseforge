@@ -49,6 +49,14 @@ Sections/
 - report placement should not require editing WEB templates for every new investigator section
 - exact slots/anchors may still exist later as precision tools, but they are not the primary placement model
 
+## How the tree starts
+
+The initial tree may be seeded by:
+- the base workspace template
+- feature scaffolds explicitly selected at `init-workspace`
+
+After init, the section tree should be treated as investigator-owned. Post-init feature config edits should not silently add/remove/move section files.
+
 ## Fallback rule
 
 If placement cannot be resolved:

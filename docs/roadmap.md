@@ -11,6 +11,7 @@ The redesign started as a workspace refactor, but manual smoke testing exposed s
 - canonical authored report content should stay renderer-neutral
 - computed figures/tables/metrics need a shared abstraction across WEB and PDF
 - PDF, API, and UI depend on those contracts and should not be designed first
+- init-selected features should seed a better investigator starting structure without causing later automatic section-tree mutations
 
 Because of that, the roadmap is now organized into **tracks** rather than fragile sequential milestone numbers.
 
@@ -37,29 +38,43 @@ What is now considered stable:
 
 ## Track B — Feature lifecycle and output profiles
 
-**Status:** next priority
+**Status:** active
 
 Purpose:
-- move feature control out of workspace initialization and into a workspace config
+- move feature control out of one-time init-only state and into a workspace config
 - define output profiles explicitly
 - clarify rebuild and invalidation rules when features change
+- seed a stronger investigator starting structure at workspace init for explicitly selected features
+- avoid silent section-tree mutations later in a live case
 
-Planned milestones:
+### Accepted baseline in this track
 
-### B1. Config-driven feature state
-Introduce a canonical YAML config file under `.caseforge/` describing:
-- active features
-- per-feature settings
-- output profile settings
-- policies such as strict validation
+The current accepted baseline is:
 
-### B2. Output profiles
-Define at least:
+- `.caseforge/features.yaml` is the canonical feature/output-profile state
+- `Sources/config/caseforge.json` syncs from active feature state
+- `analysis_site` and `report_site` are recognized output profiles
+- `analysis_site` does not depend on section-authored narrative composition
+
+### Remaining milestones in this track
+
+#### B1b. Init-time feature section seeding
+At `init-workspace`, explicitly selected features may seed investigator-facing section scaffolds under `Sections/`.
+
+This is the correct time for CaseForge to shape the investigator's authored file tree.
+
+#### B1c. No automatic post-init section restructuring
+Editing `.caseforge/features.yaml` after init must affect builds and generated outputs, but must **not** silently add/remove/move investigator-authored section files.
+
+If later we add post-init section seeding, it must be an explicit investigator action, not a side effect of config parsing.
+
+#### B2. Output profile semantics
+Clarify and implement the intended meaning of:
 - `analysis_site`
 - `report_site`
 - `pdf_report`
 
-### B3. Feature classes
+#### B3. Feature classes
 Define feature categories such as:
 - analysis features
 - authoring/section seeding features
@@ -68,19 +83,19 @@ Define feature categories such as:
 - OSINT features
 - cyber/infrastructure features
 
-### B4. Rebuild rules
+#### B4. Rebuild rules
 Document what must rerun when:
 - raw exports change
 - sections change
 - features are enabled or disabled
 - output profile settings change
 
-### B5. Safe disable semantics
+#### B5. Safe disable semantics
 Disabling a feature must remove generated analysis/output behavior without silently deleting investigator-authored content.
 
 ## Track C — Analysis output system
 
-**Status:** after Track B
+**Status:** after Track B foundations are stable
 
 Purpose:
 - make the analysis site independent of investigator-authored narrative sections
@@ -229,7 +244,7 @@ Build on top of the stable config/state model rather than becoming the source of
 
 The following older assumptions are now considered obsolete:
 
-1. **Features are chosen once at workspace init**
+1. **Features are chosen once at workspace init and never change**
    - superseded by config-driven feature lifecycle
 
 2. **Analysis site depends on authored narrative sections**
@@ -246,8 +261,8 @@ The following older assumptions are now considered obsolete:
 
 ## Immediate next work
 
-The next code track should start with **Track B**:
+The next code track should continue inside **Track B**:
 
-1. define the YAML feature config contract
-2. implement config-driven feature and output profile loading
-3. keep the existing validated baseline intact while the case becomes dynamically configurable
+1. implement init-time feature section seeding for explicitly selected features
+2. keep post-init feature config changes build-affecting but non-destructive to `Sections/`
+3. continue refining output profile semantics while preserving the validated baseline

@@ -97,4 +97,13 @@ Planned configuration layering:
 
 ## Design notes
 
-The schema should feel grouped and discoverable, but remain standard YAML so it works with existing tooling.
+The schema should feel grouped and discoverable, but still remain standard YAML.
+
+Editing this file after init changes:
+- build/runtime behavior
+- engine-facing active features
+- generated analysis/output behavior
+
+Editing this file after init should **not** automatically restructure `Sections/`.
+
+Init-selected feature scaffolds are a separate `init-workspace` concern, not an automatic side effect of later config edits.

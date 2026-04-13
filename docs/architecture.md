@@ -76,13 +76,13 @@ These will later consume the same canonical section tree and computed block syst
 
 The workspace is controlled by config files under `.caseforge/`.
 
-The next major config contract is a YAML feature/output config that will describe:
+The current canonical feature/output config is YAML-based and is intended to describe:
 - active features
 - per-feature settings
 - output profiles
 - validation and lifecycle policies
 
-That config should be the canonical editable state for dynamic feature control. A future UI may edit it, but it should not replace it.
+That config is the canonical editable state for dynamic feature control. A future UI may edit it, but it should not replace it.
 
 ## Feature model
 
@@ -99,6 +99,32 @@ A feature may contribute:
 Features are therefore different from renderers:
 - a feature says what a case can do
 - an output profile says what a particular generated output should include
+
+### Two kinds of feature effects
+
+A feature can affect the case in two different ways:
+
+#### Build/runtime effects
+These are dynamic and come from the current feature config.
+
+Examples:
+- enabling/disabling SQL/views
+- enabling/disabling generated WEB analysis pages
+- enabling/disabling source queries
+- changing which features are reflected in engine metadata
+
+These effects may change during the investigation.
+
+#### Authoring scaffold effects
+These seed investigator-facing section structure.
+
+The current design rule is:
+
+- features explicitly selected at `init-workspace` may seed section scaffolds under `Sections/`
+- later edits to `.caseforge/features.yaml` must **not** automatically add/remove/move investigator-authored section files
+- if later we support post-init reseeding, it must be an explicit investigator action, not a side effect of config parsing
+
+This preserves a strong initial investigator foundation without surprising them later in a live case.
 
 ## Output profiles
 
@@ -132,6 +158,12 @@ Narrative/report outputs should use a filesystem-first composition model:
 - frontmatter refines the structure
 
 This gives investigators simple control via the file tree instead of requiring template edits for every new section.
+
+The section tree may initially be seeded by:
+- the base workspace template
+- init-selected feature scaffolds
+
+After that, the tree is investigator-owned.
 
 ### Analysis composition
 Analysis outputs are generated from:

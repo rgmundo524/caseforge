@@ -47,20 +47,21 @@ Generated Evidence outputs.
 Future generated PDF outputs.
 
 ### `.caseforge/`
-Workspace metadata and future configuration.
+Workspace metadata and configuration.
 
 ## 4. Features
 
-Features should be dynamic and config-driven.
+Features are dynamic and config-driven for build/runtime behavior.
 
 A feature may contribute:
 - analysis SQL/views
 - source queries
 - generated WEB pages
-- section prompts/seeds
 - reusable computed blocks
 
-Features should save time and expose capabilities. They should not be the only way investigators can structure a case.
+Features selected at `init-workspace` may also seed investigator-facing section scaffolds to provide a stronger starting structure.
+
+Later edits to feature config change builds and generated outputs, but should not automatically restructure the investigator's section tree.
 
 ## 5. Output profiles
 
@@ -79,55 +80,47 @@ Generated from:
 - current shared case data
 
 ### `pdf_report`
-Future PDF output consuming the same canonical section tree and computed blocks.
+Future PDF output consuming the same canonical section tree and computed block system.
 
 ## 6. Writing investigator sections
 
-Target model:
-- file tree communicates page hierarchy
-- `index.md` defines page lead/body
-- sibling markdown files define ordered page blocks
-- frontmatter refines title, order, outputs, and optional overrides
+Planned model:
+- filesystem-first structure
+- `index.md` for page-level content
+- sibling markdown files for ordered blocks
+- frontmatter as override
+- future support for limited Obsidian-friendly syntax
 
 ## 7. Computed blocks
 
-Planned model:
-- canonical markdown references computed objects via CaseForge directives
-- WEB and PDF each render those directives differently
+Planned future direction:
+- `cf.metric`
+- `cf.table`
+- `cf.figure`
 
-Examples to support later:
-- metrics
-- tables
-- figures
+These should be renderer-neutral references to computed content, not raw renderer-specific code in canonical markdown.
 
 ## 8. OSINT and cyber investigation
 
-The system should explicitly support feature families beyond blockchain-only analysis.
+Planned feature families should eventually support:
+- identifiers and aliases
+- domains and websites
+- social/account correlations
+- infrastructure indicators
+- cross-domain correlation with on-chain analysis
 
-Planned areas:
-- identifier OSINT (email, phone, username, alias, domain)
-- cyber/infrastructure (IP, DNS, hosting, headers, TLS, phishing infra)
-- cross-domain correlation between on-chain, OSINT, and cyber evidence
+## 9. Provenance, confidence, and review
 
-## 9. Provenance and confidence
+Future outputs should support:
+- provenance
+- confidence
+- reviewability
+- snapshot/finalization semantics
 
-The system should preserve:
-- source provenance
-- feature origin of generated content
-- confidence/context notes where relevant
-- reproducibility of analytical outputs
+## 10. Troubleshooting
 
-## 10. Snapshot and finalization
-
-The system should later support snapshot points in time so the state of a case can be preserved for:
-- counsel review
-- report filing
-- disclosure packages
-- later regeneration of outputs
-
-## 11. Troubleshooting notes
-
-Current practical reminders:
-- follow the build order: `add-files -> normalize -> build-db -> build-web-draft`
-- use fresh workspaces for major smoke validation when checking architecture changes
-- treat `WEB/` as generated output, not the canonical authoring surface
+Future topics:
+- build order
+- feature config issues
+- missing output artifacts
+- runtime/bootstrap failures
