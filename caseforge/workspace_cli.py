@@ -36,6 +36,7 @@ def _build_web_draft_cmd(args: argparse.Namespace) -> int:
         snapshot_path, draft_path = build_web_draft(
             workspace_root=Path(args.workspace_root),
             output_name=args.output_name,
+            bootstrap_cases_home=Path(args.bootstrap_cases_home),
         )
     except (ValueError, RuntimeError) as exc:
         raise SystemExit(str(exc)) from exc
@@ -124,6 +125,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_web = sub.add_parser("build-web-draft", help="Build snapshot and minimal web draft page")
     p_web.add_argument("--workspace-root", required=True, help="Workspace root directory")
     p_web.add_argument("--output-name", required=True, help="Output name under WEB/")
+    p_web.add_argument(
+        "--bootstrap-cases-home",
+        default=".",
+        help="Explicit cases-home used by shared Evidence bootstrap (evidence-templates lookup or git bootstrap)",
+    )
     p_web.set_defaults(func=_build_web_draft_cmd)
 
     p_add = sub.add_parser("add-files", help="Register raw input files under workspace Sources")

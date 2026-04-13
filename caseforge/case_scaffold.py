@@ -82,7 +82,7 @@ def scaffold_evidence(case_root: Path, cases_home: Path) -> str:
     """
     local_template = cases_home / "evidence-templates" / "template"
     if local_template.exists() and local_template.is_dir():
-        copy_tree(local_template, case_root)
+        bootstrap_evidence_root_from_local_template(case_root=case_root, cases_home=cases_home)
         mode = "local"
     else:
         ensure_dir(case_root.parent)
@@ -92,6 +92,19 @@ def scaffold_evidence(case_root: Path, cases_home: Path) -> str:
     _remove_path(case_root / ".git")
     _remove_path(case_root / ".vscode")
     return mode
+
+
+def bootstrap_evidence_root_from_local_template(*, case_root: Path, cases_home: Path) -> Path:
+    local_template = cases_home / "evidence-templates" / "template"
+    if not local_template.exists() or not local_template.is_dir():
+        raise RuntimeError(
+            "Local Evidence template not found. Expected directory: "
+            f"{local_template}. Configure evidence-templates/template before building WEB output."
+        )
+    copy_tree(local_template, case_root)
+    _remove_path(case_root / ".git")
+    _remove_path(case_root / ".vscode")
+    return local_template
 
 
 def _strip_owned_paths(case_root: Path) -> None:

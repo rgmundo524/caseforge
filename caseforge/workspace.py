@@ -7,6 +7,7 @@ import re
 import shutil
 from pathlib import Path
 
+from .case_scaffold import scaffold_evidence
 from .template_layers import (
     TemplateLayerError,
     TemplateSelection,
@@ -433,20 +434,21 @@ def _compose_web_index_markdown(snapshot: dict[str, object]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _write_evidence_config_for_workspace_sources(*, output_root: Path, workspace_root: Path) -> Path:
+def _write_workspace_sources_connection(*, output_root: Path, workspace_root: Path) -> Path:
     sources_root = workspace_root / "Sources"
-    relative_db_path = Path(os.path.relpath(sources_root / "data" / "case.duckdb", output_root))
+    connection_path = output_root / "sources" / "case" / "connection.yaml"
+    connection_path.parent.mkdir(parents=True, exist_ok=True)
+    relative_db_path = Path(os.path.relpath(sources_root / "data" / "case.duckdb", connection_path.parent))
 
-    config_lines = [
+    connection_lines = [
         "name: case",
         "type: duckdb",
         "options:",
         f"  filename: {relative_db_path.as_posix()}",
         "",
     ]
-    config_path = output_root / "evidence.config.yaml"
-    config_path.write_text("\n".join(config_lines), encoding="utf-8")
-    return config_path
+    connection_path.write_text("\n".join(connection_lines), encoding="utf-8")
+    return connection_path
 
 
 def _write_web_output_manifest(
@@ -474,10 +476,34 @@ def _write_web_output_manifest(
     return web_meta_path
 
 
-def build_web_draft(*, workspace_root: Path, output_name: str) -> tuple[Path, Path]:
+def _bootstrap_web_runtime_from_case_scaffold(*, output_root: Path, cases_home: Path) -> None:
+    try:
+        scaffold_evidence(case_root=output_root, cases_home=cases_home)
+    except RuntimeError as exc:
+        raise RuntimeError(f"Failed to bootstrap WEB Evidence runtime root: {exc}") from exc
+
+    required = ("package.json", "package-lock.json")
+    missing = [name for name in required if not (output_root / name).is_file()]
+    if missing:
+        raise RuntimeError(
+            "Evidence bootstrap did not produce required runtime file(s): "
+            + ", ".join(str(output_root / name) for name in missing)
+        )
+
+    for name in required:
+        try:
+            parsed = json.loads((output_root / name).read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Evidence bootstrap produced invalid JSON for {output_root / name}: {exc}") from exc
+        if not isinstance(parsed, dict) or not parsed:
+            raise RuntimeError(f"Evidence bootstrap produced invalid {output_root / name}: must be non-empty JSON object")
+
+
+def build_web_draft(*, workspace_root: Path, output_name: str, bootstrap_cases_home: Path | None = None) -> tuple[Path, Path]:
     output_name = _validate_output_name(output_name)
 
     workspace_root = workspace_root.expanduser().resolve()
+    bootstrap_cases_home = (bootstrap_cases_home or Path(".")).expanduser().resolve()
     manifest = _read_workspace_manifest(workspace_root)
     snapshot_path = write_sections_snapshot(workspace_root=workspace_root)
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
@@ -485,7 +511,13 @@ def build_web_draft(*, workspace_root: Path, output_name: str) -> tuple[Path, Pa
     output_root = workspace_root / "WEB" / output_name
     if output_root.exists():
         shutil.rmtree(output_root)
-    output_root.mkdir(parents=True, exist_ok=True)
+    output_root.parent.mkdir(parents=True, exist_ok=True)
+    _bootstrap_web_runtime_from_case_scaffold(output_root=output_root, cases_home=bootstrap_cases_home)
+    # Keep bootstrap-owned runtime root files, but clear bootstrap starter/demo content
+    # so CaseForge owns final pages/ and sources/ surfaces deterministically.
+    shutil.rmtree(output_root / "pages", ignore_errors=True)
+    shutil.rmtree(output_root / "sources", ignore_errors=True)
+
     try:
         materialize_template_layers(
             output_root,
@@ -502,7 +534,7 @@ def build_web_draft(*, workspace_root: Path, output_name: str) -> tuple[Path, Pa
         snapshot_path=snapshot_path,
         manifest=manifest,
     )
-    _write_evidence_config_for_workspace_sources(output_root=output_root, workspace_root=workspace_root)
+    _write_workspace_sources_connection(output_root=output_root, workspace_root=workspace_root)
 
     draft_path = output_root / "pages" / "index.md"
     draft_path.parent.mkdir(parents=True, exist_ok=True)
