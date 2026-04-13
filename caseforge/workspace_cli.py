@@ -36,6 +36,7 @@ def _build_web_draft_cmd(args: argparse.Namespace) -> int:
         snapshot_path, draft_path = build_web_draft(
             workspace_root=Path(args.workspace_root),
             output_name=args.output_name,
+            profile=args.profile,
             bootstrap_cases_home=Path(args.bootstrap_cases_home),
         )
     except (ValueError, RuntimeError) as exc:
@@ -125,6 +126,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_web = sub.add_parser("build-web-draft", help="Build snapshot and minimal web draft page")
     p_web.add_argument("--workspace-root", required=True, help="Workspace root directory")
     p_web.add_argument("--output-name", required=True, help="Output name under WEB/")
+    p_web.add_argument(
+        "--profile",
+        default="analysis_site",
+        choices=["analysis_site", "report_site"],
+        help="Output profile to build (default: analysis_site)",
+    )
     p_web.add_argument(
         "--bootstrap-cases-home",
         default=".",

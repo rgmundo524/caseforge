@@ -20,6 +20,7 @@
     pyarrow
     httpx
     pydantic
+    pyyaml
   '';
 
   languages.javascript.enable = true;

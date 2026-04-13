@@ -73,6 +73,7 @@ class WorkspaceInitTests(unittest.TestCase):
         self.assertTrue((workspace / "Sources" / "config").is_dir())
         self.assertTrue((workspace / "Sources" / "data" / "manifest.json").exists())
         self.assertTrue((workspace / "Sources" / "config" / "caseforge.json").exists())
+        self.assertTrue((workspace / ".caseforge" / "features.yaml").exists())
         self.assertTrue((workspace / "WEB").is_dir())
         self.assertTrue((workspace / "PDF").is_dir())
         manifest_path = workspace / ".caseforge" / "workspace.json"
@@ -94,6 +95,13 @@ class WorkspaceInitTests(unittest.TestCase):
 
         sources_config = json.loads((workspace / "Sources" / "config" / "caseforge.json").read_text(encoding="utf-8"))
         self.assertEqual(sources_config, {"template": "default", "features": ["cross-chain-activity", "urls"]})
+        features_yaml = (workspace / ".caseforge" / "features.yaml").read_text(encoding="utf-8")
+        self.assertIn("schema_version: 1", features_yaml)
+        self.assertIn("cross-chain-activity:", features_yaml)
+        self.assertIn("urls:", features_yaml)
+        self.assertIn("analysis_site:", features_yaml)
+        self.assertIn("report_site:", features_yaml)
+        self.assertIn("pdf_report:", features_yaml)
 
     def test_seeded_sections_frontmatter(self) -> None:
         workspace = init_workspace(
@@ -230,6 +238,109 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         updated_config = json.loads(config_path.read_text(encoding="utf-8"))
         self.assertEqual(updated_config, {"template": "default", "features": ["cross-chain-activity", "urls"]})
 
+    def test_engine_bridge_scaffolds_features_yaml_for_existing_workspace_missing_file(self) -> None:
+        features_path = self.workspace / ".caseforge" / "features.yaml"
+        features_path.unlink()
+
+        ensure_workspace_sources_engine_bridge(workspace_root=self.workspace)
+
+        self.assertTrue(features_path.exists())
+        content = features_path.read_text(encoding="utf-8")
+        self.assertIn("schema_version: 1", content)
+        self.assertIn("cross-chain-activity:", content)
+        self.assertIn("urls:", content)
+        self.assertIn("enabled: true", content)
+
+    def test_engine_bridge_invalid_features_yaml_fails_cleanly(self) -> None:
+        features_path = self.workspace / ".caseforge" / "features.yaml"
+        features_path.write_text("schema_version: 1\nfeatures\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(RuntimeError, "Failed to parse YAML"):
+            ensure_workspace_sources_engine_bridge(workspace_root=self.workspace)
+
+    def test_engine_bridge_unknown_feature_id_fails_cleanly(self) -> None:
+        features_path = self.workspace / ".caseforge" / "features.yaml"
+        features_path.write_text(
+            (
+                "schema_version: 1\n"
+                "features:\n"
+                "  unknown-feature:\n"
+                "    enabled: true\n"
+                "    settings: {}\n"
+                "outputs:\n"
+                "  analysis_site:\n"
+                "    enabled: true\n"
+                "    include_sections: false\n"
+                "    include_standard_analysis: true\n"
+                "    include_feature_analysis: true\n"
+                "  report_site:\n"
+                "    enabled: true\n"
+                "    include_sections: true\n"
+                "    include_standard_analysis: true\n"
+                "    include_feature_analysis: true\n"
+                "  pdf_report:\n"
+                "    enabled: false\n"
+                "    include_sections: true\n"
+                "    include_standard_analysis: true\n"
+                "    include_feature_analysis: true\n"
+                "policies:\n"
+                "  strict_validation: true\n"
+                "  preserve_authored_sections_on_feature_disable: true\n"
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "unknown feature id 'unknown-feature'"):
+            ensure_workspace_sources_engine_bridge(workspace_root=self.workspace)
+
+    def test_engine_bridge_accepts_real_yaml_comments_quotes_and_nested_settings(self) -> None:
+        features_path = self.workspace / ".caseforge" / "features.yaml"
+        features_path.write_text(
+            (
+                "# investigator config\n"
+                "schema_version: 1\n"
+                "features:\n"
+                "  cross-chain-activity:\n"
+                "    enabled: true\n"
+                "    settings:\n"
+                "      note: \"quoted string\"\n"
+                "      thresholds:\n"
+                "        low: 1\n"
+                "        high: 2\n"
+                "      tags:\n"
+                "        - \"alpha\"\n"
+                "        - beta\n"
+                "  urls:\n"
+                "    enabled: false\n"
+                "    settings: {}\n"
+                "outputs:\n"
+                "  analysis_site:\n"
+                "    enabled: true\n"
+                "    include_sections: false\n"
+                "    include_standard_analysis: true\n"
+                "    include_feature_analysis: true\n"
+                "  report_site:\n"
+                "    enabled: true\n"
+                "    include_sections: true\n"
+                "    include_standard_analysis: true\n"
+                "    include_feature_analysis: true\n"
+                "  pdf_report:\n"
+                "    enabled: false\n"
+                "    include_sections: true\n"
+                "    include_standard_analysis: true\n"
+                "    include_feature_analysis: true\n"
+                "policies:\n"
+                "  strict_validation: true\n"
+                "  preserve_authored_sections_on_feature_disable: true\n"
+            ),
+            encoding="utf-8",
+        )
+
+        ensure_workspace_sources_engine_bridge(workspace_root=self.workspace)
+
+        updated_config = json.loads((self.workspace / "Sources" / "config" / "caseforge.json").read_text(encoding="utf-8"))
+        self.assertEqual(updated_config["features"], ["cross-chain-activity"])
+
     def test_write_sections_snapshot_missing_frontmatter_fails_cleanly(self) -> None:
         bad_file = self.workspace / "Sections" / "conclusions.md"
         bad_file.write_text("# Conclusions\n\nNo frontmatter.\n", encoding="utf-8")
@@ -290,12 +401,17 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Duplicate section_id 'conclusions'"):
             write_sections_snapshot(workspace_root=self.workspace)
 
-    def test_build_web_draft_creates_ordered_index_and_excludes_non_web_sections(self) -> None:
+    def test_build_web_draft_report_site_creates_ordered_index_and_excludes_non_web_sections(self) -> None:
         conclusions = self.workspace / "Sections" / "conclusions.md"
         text = conclusions.read_text(encoding="utf-8")
         conclusions.write_text(text.replace("  - web\n", ""), encoding="utf-8")
 
-        snapshot_path, draft_path = build_web_draft(workspace_root=self.workspace, output_name="analysis-site", bootstrap_cases_home=self.root)
+        snapshot_path, draft_path = build_web_draft(
+            workspace_root=self.workspace,
+            output_name="analysis-site",
+            profile="report_site",
+            bootstrap_cases_home=self.root,
+        )
         self.assertTrue(snapshot_path.exists())
         self.assertTrue(draft_path.exists())
         self.assertEqual(draft_path, self.workspace / "WEB" / "analysis-site" / "pages" / "index.md")
@@ -336,13 +452,14 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
 
         manifest = json.loads((output_root / ".caseforge" / "web_output.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["output_name"], "analysis-site")
+        self.assertEqual(manifest["profile"], "analysis_site")
         self.assertEqual(manifest["renderer"], "evidence")
         self.assertEqual(manifest["template"], "default")
         self.assertEqual(manifest["features"], ["cross-chain-activity", "urls"])
-        self.assertEqual(manifest["section_snapshot"], "../../Sources/derived/sections_snapshot.json")
         self.assertEqual(manifest["sources_root"], "../../Sources")
         self.assertEqual(manifest["workspace_root"], "../..")
         self.assertTrue(manifest["built_at"].endswith("Z"))
+        self.assertNotIn("section_snapshot", manifest)
 
     def test_build_web_draft_points_connection_to_workspace_sources_data(self) -> None:
         build_web_draft(workspace_root=self.workspace, output_name="analysis-site", bootstrap_cases_home=self.root)
@@ -357,7 +474,7 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         self.assertFalse((output_root / "Sources").exists())
 
     def test_build_web_draft_is_refresh_safe(self) -> None:
-        _, draft_path = build_web_draft(workspace_root=self.workspace, output_name="analysis-site", bootstrap_cases_home=self.root)
+        _, draft_path = build_web_draft(workspace_root=self.workspace, output_name="analysis-site", profile="report_site", bootstrap_cases_home=self.root)
         self.assertTrue(draft_path.exists())
         first = draft_path.read_text(encoding="utf-8")
 
@@ -373,7 +490,7 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         )
         section_path.write_text(updated, encoding="utf-8")
 
-        _, draft_path_second = build_web_draft(workspace_root=self.workspace, output_name="analysis-site", bootstrap_cases_home=self.root)
+        _, draft_path_second = build_web_draft(workspace_root=self.workspace, output_name="analysis-site", profile="report_site", bootstrap_cases_home=self.root)
         self.assertEqual(draft_path, draft_path_second)
         second = draft_path_second.read_text(encoding="utf-8")
         self.assertNotEqual(first, second)
@@ -384,7 +501,7 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         self.assertTrue((output_root / "package.json").exists())
         self.assertTrue((output_root / "package-lock.json").exists())
 
-        build_web_draft(workspace_root=self.workspace, output_name="analysis-site", bootstrap_cases_home=self.root)
+        build_web_draft(workspace_root=self.workspace, output_name="analysis-site", profile="report_site", bootstrap_cases_home=self.root)
         third = draft_path_second.read_text(encoding="utf-8")
         self.assertEqual(second, third)
 
@@ -409,6 +526,77 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
         self.assertFalse((Path(__file__).resolve().parent.parent / "templates" / "runtime" / "evidence").exists())
         _, draft_path = build_web_draft(workspace_root=self.workspace, output_name="analysis-site", bootstrap_cases_home=self.root)
         self.assertTrue(draft_path.exists())
+
+    def test_build_web_draft_analysis_site_does_not_depend_on_sections_composition(self) -> None:
+        bad_file = self.workspace / "Sections" / "case-background.md"
+        bad_file.write_text("# broken frontmatter\n", encoding="utf-8")
+
+        snapshot_path, draft_path = build_web_draft(
+            workspace_root=self.workspace,
+            output_name="analysis-site",
+            profile="analysis_site",
+            bootstrap_cases_home=self.root,
+        )
+        self.assertIsNone(snapshot_path)
+        if draft_path.exists():
+            self.assertNotIn(
+                "Generated draft from case-authored sections snapshot.",
+                draft_path.read_text(encoding="utf-8"),
+            )
+        self.assertTrue((self.workspace / "WEB" / "analysis-site" / ".caseforge" / "web_output.json").exists())
+
+    def test_build_web_draft_report_site_still_writes_snapshot_driven_index(self) -> None:
+        snapshot_path, draft_path = build_web_draft(
+            workspace_root=self.workspace,
+            output_name="report-site",
+            profile="report_site",
+            bootstrap_cases_home=self.root,
+        )
+        self.assertIsNotNone(snapshot_path)
+        self.assertTrue(draft_path.exists())
+        self.assertIn("Generated draft from case-authored sections snapshot.", draft_path.read_text(encoding="utf-8"))
+
+    def test_build_web_draft_rejects_disabled_profile_cleanly(self) -> None:
+        features_path = self.workspace / ".caseforge" / "features.yaml"
+        content = features_path.read_text(encoding="utf-8")
+        features_path.write_text(content.replace("analysis_site:\n    enabled: true", "analysis_site:\n    enabled: false"), encoding="utf-8")
+
+        with self.assertRaisesRegex(RuntimeError, "profile 'analysis_site' is disabled"):
+            build_web_draft(
+                workspace_root=self.workspace,
+                output_name="analysis-site",
+                profile="analysis_site",
+                bootstrap_cases_home=self.root,
+            )
+
+    def test_build_web_draft_rejects_pdf_report_profile_cleanly(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "pdf_report"):
+            build_web_draft(
+                workspace_root=self.workspace,
+                output_name="analysis-site",
+                profile="pdf_report",
+                bootstrap_cases_home=self.root,
+            )
+
+    def test_disabling_feature_in_yaml_changes_web_layering_and_engine_sync(self) -> None:
+        features_path = self.workspace / ".caseforge" / "features.yaml"
+        content = features_path.read_text(encoding="utf-8")
+        features_path.write_text(content.replace("urls:\n    enabled: true", "urls:\n    enabled: false"), encoding="utf-8")
+
+        ensure_workspace_sources_engine_bridge(workspace_root=self.workspace)
+        sources_config = json.loads((self.workspace / "Sources" / "config" / "caseforge.json").read_text(encoding="utf-8"))
+        self.assertEqual(sources_config["features"], ["cross-chain-activity"])
+
+        build_web_draft(
+            workspace_root=self.workspace,
+            output_name="analysis-site",
+            profile="analysis_site",
+            bootstrap_cases_home=self.root,
+        )
+        manifest = json.loads(
+            (self.workspace / "WEB" / "analysis-site" / ".caseforge" / "web_output.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manifest["features"], ["cross-chain-activity"])
 
 
 if __name__ == "__main__":

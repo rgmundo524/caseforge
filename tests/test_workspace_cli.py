@@ -150,7 +150,6 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         stdout = out.getvalue()
         self.assertIn("Built web draft:", stdout)
-        self.assertTrue((workspace / "Sources" / "derived" / "sections_snapshot.json").exists())
         self.assertTrue((workspace / "WEB" / "analysis-site" / "pages" / "index.md").exists())
         self.assertTrue((workspace / "WEB" / "analysis-site" / "evidence.config.yaml").exists())
         self.assertTrue((workspace / "WEB" / "analysis-site" / ".caseforge" / "web_output.json").exists())
@@ -187,6 +186,8 @@ class WorkspaceCliTests(unittest.TestCase):
                     str(workspace),
                     "--output-name",
                     "analysis-site",
+                    "--profile",
+                    "report_site",
                     "--bootstrap-cases-home",
                     str(self.root),
                 ]
@@ -223,6 +224,75 @@ class WorkspaceCliTests(unittest.TestCase):
             )
 
         self.assertIn("Invalid --output-name", str(ctx.exception))
+
+    def test_cli_build_web_draft_disabled_profile_is_clean_system_exit(self) -> None:
+        init_args = [
+            "init-workspace",
+            "--cases-home",
+            str(self.root),
+            "--case-id",
+            "12345",
+            "--title",
+            "Test Case",
+            "--template",
+            "default",
+        ]
+        self.assertEqual(workspace_cli.main(init_args), 0)
+        workspace = self._workspace_dir()
+        features_path = workspace / ".caseforge" / "features.yaml"
+        features_path.write_text(
+            features_path.read_text(encoding="utf-8").replace(
+                "analysis_site:\n    enabled: true", "analysis_site:\n    enabled: false"
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            workspace_cli.main(
+                [
+                    "build-web-draft",
+                    "--workspace-root",
+                    str(workspace),
+                    "--output-name",
+                    "analysis-site",
+                    "--profile",
+                    "analysis_site",
+                    "--bootstrap-cases-home",
+                    str(self.root),
+                ]
+            )
+        self.assertIn("profile 'analysis_site' is disabled", str(ctx.exception))
+
+    def test_cli_build_web_draft_rejects_pdf_report_profile(self) -> None:
+        init_args = [
+            "init-workspace",
+            "--cases-home",
+            str(self.root),
+            "--case-id",
+            "12345",
+            "--title",
+            "Test Case",
+            "--template",
+            "default",
+        ]
+        self.assertEqual(workspace_cli.main(init_args), 0)
+        workspace = self._workspace_dir()
+
+        with self.assertRaises(SystemExit) as ctx:
+            workspace_cli.main(
+                [
+                    "build-web-draft",
+                    "--workspace-root",
+                    str(workspace),
+                    "--output-name",
+                    "analysis-site",
+                    "--profile",
+                    "pdf_report",
+                    "--bootstrap-cases-home",
+                    str(self.root),
+                ]
+            )
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_cli_add_files_delegates_to_sources_case_root(self) -> None:
         self.assertEqual(
