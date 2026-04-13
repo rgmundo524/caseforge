@@ -21,41 +21,11 @@ from .util import now_stamp, slugify
 
 
 SECTION_SPECS = (
-    {
-        "filename": "case-background.md",
-        "section_id": "case_background",
-        "title": "Case Background",
-        "placement_key": "report.case_background",
-        "prompt": "Summarize the case context, objectives, and key entities relevant to this investigation.",
-    },
-    {
-        "filename": "client-narrative.md",
-        "section_id": "client_narrative",
-        "title": "Client Narrative",
-        "placement_key": "report.client_narrative",
-        "prompt": "Capture the client-provided narrative, scope, and timeline in their own terms.",
-    },
-    {
-        "filename": "investigative-findings.md",
-        "section_id": "investigative_findings",
-        "title": "Investigative Findings",
-        "placement_key": "report.investigative_findings",
-        "prompt": "Document factual findings, supporting evidence, and notable analytical outcomes.",
-    },
-    {
-        "filename": "conclusions.md",
-        "section_id": "conclusions",
-        "title": "Conclusions",
-        "placement_key": "report.conclusions",
-        "prompt": "Provide conclusions tied directly to the findings and indicate confidence level where appropriate.",
-    },
-    {
-        "filename": "limitations.md",
-        "section_id": "limitations",
-        "title": "Limitations",
-        "placement_key": "report.limitations",
-        "prompt": "List investigative limitations, assumptions, and known data gaps.",
-    },
+    {"filename": "case-background.md", "section_id": "case_background"},
+    {"filename": "client-narrative.md", "section_id": "client_narrative"},
+    {"filename": "investigative-findings.md", "section_id": "investigative_findings"},
+    {"filename": "conclusions.md", "section_id": "conclusions"},
+    {"filename": "limitations.md", "section_id": "limitations"},
 )
 REQUIRED_SECTION_KEYS = (
     "section_id",
@@ -303,21 +273,29 @@ def ensure_workspace_sources_engine_bridge(*, workspace_root: Path) -> Path:
     return sources_root
 
 
-def _section_text(*, section_id: str, title: str, placement_key: str, prompt: str) -> str:
-    return (
-        "---\n"
-        f"section_id: {section_id}\n"
-        f"title: {title}\n"
-        "content_class: case_authored\n"
-        f"placement_key: {placement_key}\n"
-        "outputs:\n"
-        "  - web\n"
-        "  - pdf\n"
-        "status: draft\n"
-        "---\n\n"
-        f"# {title}\n\n"
-        f"{prompt}\n"
-    )
+def _section_seed_layers(*, template: str, features: list[str]) -> list[Path]:
+    templates_root = Path(__file__).resolve().parent.parent / "templates"
+    layers = [
+        templates_root / "common" / "section-seeds",
+        templates_root / template / "section-seeds",
+    ]
+    layers.extend(templates_root / "features" / feature / "section-seeds" for feature in features)
+    return layers
+
+
+def _iter_seed_files(seed_root: Path) -> list[Path]:
+    if not seed_root.exists() or not seed_root.is_dir():
+        return []
+    return sorted(path for path in seed_root.rglob("*") if path.is_file())
+
+
+def _materialize_section_seeds(*, sections_dir: Path, template: str, features: list[str]) -> None:
+    for seed_root in _section_seed_layers(template=template, features=features):
+        for seed_file in _iter_seed_files(seed_root):
+            rel_path = seed_file.relative_to(seed_root)
+            out_path = sections_dir / rel_path
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(seed_file, out_path)
 
 
 def init_workspace(
@@ -357,17 +335,7 @@ def init_workspace(
     manifest_path = meta_dir / "workspace.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
-    for section in SECTION_SPECS:
-        path = sections_dir / section["filename"]
-        path.write_text(
-            _section_text(
-                section_id=section["section_id"],
-                title=section["title"],
-                placement_key=section["placement_key"],
-                prompt=section["prompt"],
-            ),
-            encoding="utf-8",
-        )
+    _materialize_section_seeds(sections_dir=sections_dir, template=template, features=features)
 
     ensure_workspace_sources_engine_bridge(workspace_root=workspace_root)
 

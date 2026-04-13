@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from pathlib import Path
+import hashlib
 
 from caseforge.workspace import (
     build_web_draft,
@@ -127,6 +128,22 @@ class WorkspaceInitTests(unittest.TestCase):
             self.assertIn("outputs:\n  - web\n  - pdf", content)
             self.assertIn("status: draft", content)
             self.assertIn("# ", content)
+
+    def test_init_workspace_feature_section_seeds_are_materialized(self) -> None:
+        workspace = init_workspace(
+            cases_home=self.root,
+            case_id="C-02",
+            title="Case",
+            template="default",
+            features=["cross-chain-activity", "urls"],
+        )
+
+        cross_chain_seed = workspace / "Sections" / "Investigative-Notes" / "cross-chain-activity.md"
+        urls_seed = workspace / "Sections" / "Investigative-Notes" / "url-domain-observations.md"
+        self.assertTrue(cross_chain_seed.exists())
+        self.assertTrue(urls_seed.exists())
+        self.assertIn("Cross-Chain Activity Notes", cross_chain_seed.read_text(encoding="utf-8"))
+        self.assertIn("URL / Domain Observations", urls_seed.read_text(encoding="utf-8"))
 
     def test_duplicate_features_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "Duplicate --feature"):
@@ -579,6 +596,18 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
             )
 
     def test_disabling_feature_in_yaml_changes_web_layering_and_engine_sync(self) -> None:
+        def _sections_digest() -> str:
+            sections_dir = self.workspace / "Sections"
+            files = sorted(path for path in sections_dir.rglob("*") if path.is_file())
+            payload: list[str] = []
+            for path in files:
+                payload.append(path.relative_to(sections_dir).as_posix())
+                payload.append(path.read_text(encoding="utf-8"))
+            joined = "\n---\n".join(payload)
+            return hashlib.sha256(joined.encode("utf-8")).hexdigest()
+
+        before_sections_digest = _sections_digest()
+
         features_path = self.workspace / ".caseforge" / "features.yaml"
         content = features_path.read_text(encoding="utf-8")
         features_path.write_text(content.replace("urls:\n    enabled: true", "urls:\n    enabled: false"), encoding="utf-8")
@@ -597,6 +626,7 @@ class WorkspaceSectionsPipelineTests(unittest.TestCase):
             (self.workspace / "WEB" / "analysis-site" / ".caseforge" / "web_output.json").read_text(encoding="utf-8")
         )
         self.assertEqual(manifest["features"], ["cross-chain-activity"])
+        self.assertEqual(before_sections_digest, _sections_digest())
 
 
 if __name__ == "__main__":
