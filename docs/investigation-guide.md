@@ -1,106 +1,157 @@
 # CaseForge Investigative Guide
 
-> Status: draft outline
+> Status: draft workflow guide
 >
-> This guide is intentionally incomplete. It exists to document the intended investigative workflow as the project evolves.
+> This guide documents the intended investigation workflow under the Quarto-centered report architecture.
 
 ## 1. Purpose
 
-CaseForge is designed to support live investigations that evolve over time.
+CaseForge supports live investigations that evolve over time.
 
 The system should help investigators:
 - ingest and refresh raw exports repeatedly
-- preserve a structured case workspace
-- generate live analysis outputs during the investigation
-- author narrative/report content without losing analytical reproducibility
-- later produce report-style and PDF outputs from the same case
+- preserve a structured local case workspace
+- generate a live analysis UI during the investigation
+- author report content without losing analytical reproducibility
+- render report outputs in HTML/PDF from the same case state
+- capture explicit snapshot points when needed
 
-CaseForge is not intended to fully automate investigation judgment.
+CaseForge is not intended to fully automate investigator judgment.
 
-## 2. Investigation lifecycle
+## 2. Operating model
 
-Current working lifecycle:
+CaseForge is designed as a **local-first** investigation application.
 
-1. create workspace
-2. add or refresh raw exports
-3. normalize
-4. build database
-5. build analysis site
-6. author or revise narrative sections
-7. build report site
-8. snapshot/finalize when needed
+The default expectation is:
+- the investigator has a local copy of the case workspace
+- canonical data builds happen locally
+- the analysis site runs locally
+- report outputs render locally
+- sync/backup/collaboration are optional and secondary
 
-This cycle is expected to repeat many times during an active investigation.
+## 3. Case lifecycle
 
-## 3. Workspace structure
+### Phase 1 — Create or open case
+The investigator creates a workspace and chooses the starting template/features.
+
+At this point CaseForge should:
+- scaffold the workspace
+- seed report section scaffolds for selected init-time features
+- write feature/output config
+
+### Phase 2 — Add or refresh evidence
+As the investigation evolves, the investigator periodically:
+- adds or replaces raw exports
+- runs normalize
+- runs build-db
+
+This should be routine and repeatable.
+
+### Phase 3 — Review live analysis
+The investigator builds or refreshes the analysis site.
+
+The analysis site should always reflect:
+- current canonical data
+- current enabled analysis features
+- current canonical marts/views
+
+The analysis site should not depend on report authoring being finished.
+
+### Phase 4 — Author the report
+The investigator edits the report tree under `Sections/`.
+
+The report tree should be the canonical report authoring surface and should move toward `.qmd` as the default rendered report format.
+
+### Phase 5 — Render report outputs
+CaseForge prepares the report model/project for Quarto.
+
+Quarto then renders:
+- report HTML
+- PDF report
+- later profile-specific variants
+
+### Phase 6 — Snapshot and finalize
+At important points, the investigator snapshots:
+- feature state
+- report tree state
+- canonical data build state
+- rendered outputs
+
+This is how the system preserves reproducible reporting at a point in time.
+
+## 4. Workspace structure
 
 ### `Sections/`
-Canonical investigator-authored narrative content.
+Canonical report authoring tree.
 
 ### `Sources/`
 Canonical structured data/build substrate.
 
 ### `WEB/`
-Generated Evidence outputs.
+Generated analysis-site outputs (currently Evidence).
 
 ### `PDF/`
-Future generated PDF outputs.
+Legacy placeholder; formal report outputs should increasingly be viewed as Quarto-driven rather than bespoke PDF workspace outputs.
 
 ### `.caseforge/`
-Workspace metadata and configuration.
+Workspace metadata, feature config, and output-profile state.
 
-## 4. Features
+## 5. Features
 
 Features are dynamic and config-driven for build/runtime behavior.
 
 A feature may contribute:
-- analysis SQL/views
-- source queries
-- generated WEB pages
-- reusable computed blocks
+- canonical analysis marts/views
+- analysis-site pages/queries
+- report section seeds
+- report blocks
+- future Quarto partials/templates
 
-Features selected at `init-workspace` may also seed investigator-facing section scaffolds to provide a stronger starting structure.
+Features selected at `init-workspace` may seed the initial report tree.
 
-Later edits to feature config change builds and generated outputs, but should not automatically restructure the investigator's section tree.
+Later edits to feature config change builds and generated outputs, but should not automatically restructure the investigator’s authored report tree.
 
-## 5. Output profiles
+## 6. Output profiles
 
 ### `analysis_site`
 Generated from:
 - standard analysis
 - enabled feature analysis
-- current DuckDB state
+- current canonical data
 
-It should not depend on the existence of narrative section files.
+Should not depend on authored report files.
 
 ### `report_site`
 Generated from:
-- canonical section tree in `Sections/`
-- selected generated analysis content
-- current shared case data
+- the report tree in `Sections/`
+- selected report blocks
+- current canonical data
+- Quarto project/profile configuration
 
 ### `pdf_report`
-Future PDF output consuming the same canonical section tree and computed block system.
+Generated from the same report tree and report blocks, using Quarto PDF or Typst-backed Quarto output.
 
-## 6. Writing investigator sections
+## 7. Report authoring
 
-Planned model:
-- filesystem-first structure
-- `index.md` for page-level content
-- sibling markdown files for ordered blocks
-- frontmatter as override
-- future support for limited Obsidian-friendly syntax
+Current target model:
+- filesystem-first report tree
+- `.qmd` as the default rendered report format
+- `index.qmd` for page-level metadata and lead/body
+- sibling files for ordered blocks on a page
+- subfolders for child pages
 
-## 7. Computed blocks
+Plain markdown remains appropriate for freeform notes/reference material outside the canonical report tree.
+
+## 8. Computed content
 
 Planned future direction:
 - `cf.metric`
 - `cf.table`
 - `cf.figure`
 
-These should be renderer-neutral references to computed content, not raw renderer-specific code in canonical markdown.
+These should reference prepared canonical datasets/blocks rather than force investigators to duplicate analysis logic in report files.
 
-## 8. OSINT and cyber investigation
+## 9. OSINT and cyber investigation
 
 Planned feature families should eventually support:
 - identifiers and aliases
@@ -109,7 +160,7 @@ Planned feature families should eventually support:
 - infrastructure indicators
 - cross-domain correlation with on-chain analysis
 
-## 9. Provenance, confidence, and review
+## 10. Provenance, confidence, and review
 
 Future outputs should support:
 - provenance
@@ -117,10 +168,11 @@ Future outputs should support:
 - reviewability
 - snapshot/finalization semantics
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 Future topics:
 - build order
 - feature config issues
-- missing output artifacts
-- runtime/bootstrap failures
+- Quarto profile/render issues
+- analysis-site/runtime issues
+- snapshot reproducibility issues

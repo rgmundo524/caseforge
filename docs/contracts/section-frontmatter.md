@@ -1,63 +1,73 @@
-# Section Frontmatter Contract
+# Report Tree Frontmatter Contract
 
 > Status: draft contract
 
 ## Purpose
 
-This document defines the canonical frontmatter fields for investigator-authored narrative section files.
+This document defines the frontmatter fields for canonical report files under `Sections/`.
 
-These files live under `Sections/` and are the canonical authored source for narrative/report outputs.
+These files should move toward `.qmd` for rendered report outputs.
 
-## Current required baseline fields
+## Two file roles
 
-Current seeded sections already use:
+### Page files (`index.qmd`)
+These define page/chapter metadata plus optional page lead/body content.
+
+Illustrative shape:
 
 ```yaml
-section_id: conclusions
-title: Conclusions
-content_class: case_authored
-placement_key: report.conclusions
+page_id: intro
+title: Introduction
+order: 10
 outputs:
-  - web
-  - pdf
+  - report_site
+  - pdf_report
+page_kind: section
 status: draft
 ```
 
-## Current required fields
+### Block files (sibling `.qmd` files)
+These define ordered blocks that live on a page.
 
-### `section_id`
-Required non-empty string.
-Stable identifier for the section.
+Illustrative shape:
 
-### `title`
-Required non-empty string.
-Human-readable title.
+```yaml
+block_id: case_background
+title: Case Background
+order: 10
+outputs:
+  - report_site
+  - pdf_report
+content_class: case_authored
+status: draft
+```
 
-### `content_class`
-Required non-empty string.
-Current baseline value: `case_authored`.
+## Current intended fields
 
-### `placement_key`
-Required non-empty string.
-Currently used as semantic placement information.
+### Page-level fields
+- `page_id` — stable identifier for the page
+- `title` — display title
+- `order` — ordering among sibling pages
+- `outputs` — which output profiles include the page
+- `page_kind` — classification of page node
+- `status` — draft/final/other lifecycle marker
 
-### `outputs`
-Required non-empty list of output ids.
-Current baseline values include `web` and `pdf`.
-
-### `status`
-Required non-empty string.
-Current baseline value: `draft`.
-
-## Planned future optional fields
-
-As the filesystem-first composition model evolves, likely optional fields include:
-- `order`
-- `page_id`
-- `parent_page`
-- `placement_mode`
-- `strict`
+### Block-level fields
+- `block_id` — stable identifier for the block
+- `title` — display title
+- `order` — ordering among sibling blocks
+- `outputs` — which output profiles include the block
+- `content_class` — narrative/reference/generated/etc.
+- `status` — draft/final/other lifecycle marker
 
 ## Design note
 
-Frontmatter should refine placement and behavior, but the long-term composition model should remain filesystem-first for narrative/report outputs.
+Path is the primary placement signal for the report tree.
+
+Frontmatter refines:
+- ordering
+- display metadata
+- output targeting
+- page/block classification
+
+It should not be used to recreate a rigid slot-matching system for the canonical report tree.

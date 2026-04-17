@@ -2,18 +2,21 @@
 
 Branch: `case-manager`
 
-## Why this roadmap changed
+## Why this roadmap changed again
 
-The redesign started as a workspace refactor, but manual smoke testing exposed several higher-level product decisions that are more important than simple renderer plumbing:
+The earlier redesign established a strong workspace baseline, but deeper design work led to a larger architectural correction:
 
-- features cannot be fixed forever at workspace initialization
-- the analysis site and report site are not the same product
-- canonical authored report content should stay renderer-neutral
-- computed figures/tables/metrics need a shared abstraction across WEB and PDF
-- PDF, API, and UI depend on those contracts and should not be designed first
-- init-selected features should seed a better investigator starting structure without causing later automatic section-tree mutations
+- CaseForge is not fundamentally a website project
+- Quarto is not merely another renderer; it is a publishing/project system
+- Evidence should remain useful, but as an analysis UI rather than the center of report truth
+- report truth and analysis truth need different homes
+- the project should optimize for local-first, reproducible investigation workflows rather than mandatory server-hosted sync
 
-Because of that, the roadmap is now organized into **tracks** rather than fragile sequential milestone numbers.
+Because of that, the roadmap now treats:
+
+- **CaseForge** as the canonical analysis and case system
+- **Quarto** as the canonical report/project system
+- **Evidence** as the interactive analysis UI
 
 ## Track A — Foundation and validated baseline
 
@@ -28,241 +31,230 @@ Accepted work in this track:
 - runnable WEB bootstrap using shared standalone Evidence bootstrap logic
 - WEB runtime/content boundary cleanup
 - fresh manual end-to-end smoke validation
+- feature/output-profile YAML config baseline
+- init-time feature section seeding from repo-owned files
 
-What is now considered stable:
+What is stable today:
 
-- `Sections/` exists as canonical narrative source space
+- `Sections/` exists and can be seeded deterministically
 - `Sources/` works as the canonical data/build substrate
-- `WEB/` builds a runnable Evidence output
+- `WEB/` builds a runnable Evidence analysis site
 - the existing engine remains reusable through workspace wrappers
 
-## Track B — Feature lifecycle and output profiles
+## Track B — Local-first case workflow and config
 
 **Status:** active
 
 Purpose:
-- move feature control out of one-time init-only state and into a workspace config
-- define output profiles explicitly
-- clarify rebuild and invalidation rules when features change
-- seed a stronger investigator starting structure at workspace init for explicitly selected features
-- avoid silent section-tree mutations later in a live case
+- make the local workspace the authoritative case
+- keep sync/archival optional rather than mandatory
+- make feature/output control explicit and investigator-editable
 
-### Accepted baseline in this track
+### B1. Feature config baseline
+**Status:** accepted
 
-The current accepted baseline is:
+- `.caseforge/features.yaml` is canonical
+- `Sources/config/caseforge.json` syncs from active features
+- `analysis_site` and `report_site` exist as output profile concepts
 
-- `.caseforge/features.yaml` is the canonical feature/output-profile state
-- `Sources/config/caseforge.json` syncs from active feature state
-- `analysis_site` and `report_site` are recognized output profiles
-- `analysis_site` does not depend on section-authored narrative composition
+### B1b. Init-time feature section seeding
+**Status:** accepted
 
-### Remaining milestones in this track
+- init-selected features may seed report/section scaffolds
+- later feature config edits do not silently mutate the authored tree
 
-#### B1b. Init-time feature section seeding
-At `init-workspace`, explicitly selected features may seed investigator-facing section scaffolds under `Sections/`.
-
-This is the correct time for CaseForge to shape the investigator's authored file tree.
-
-#### B1c. No automatic post-init section restructuring
-Editing `.caseforge/features.yaml` after init must affect builds and generated outputs, but must **not** silently add/remove/move investigator-authored section files.
-
-If later we add post-init section seeding, it must be an explicit investigator action, not a side effect of config parsing.
-
-#### B2. Output profile semantics
-Clarify and implement the intended meaning of:
+### B2. Output profile semantics
+Clarify and implement the meaning of:
 - `analysis_site`
 - `report_site`
 - `pdf_report`
+- later additional report/export profiles
 
-#### B3. Feature classes
-Define feature categories such as:
-- analysis features
-- authoring/section seeding features
-- intake/normalization features
-- output-only features
-- OSINT features
-- cyber/infrastructure features
-
-#### B4. Rebuild rules
-Document what must rerun when:
+### B3. Safe rebuild rules
+Document and then implement what must rerun when:
 - raw exports change
-- sections change
-- features are enabled or disabled
-- output profile settings change
+- report files change
+- feature config changes
+- output profile changes
 
-#### B5. Safe disable semantics
-Disabling a feature must remove generated analysis/output behavior without silently deleting investigator-authored content.
+### B4. Snapshot/freeze workflow
+Define when and how the investigator captures reproducible snapshot points for analysis and report outputs.
 
-## Track C — Analysis output system
+## Track C — Canonical analysis extraction
 
-**Status:** after Track B foundations are stable
+**Status:** next
 
 Purpose:
-- make the analysis site independent of investigator-authored narrative sections
-- treat the analysis site as a generated operational workspace during active investigation
+- identify which analysis currently lives in renderer-oriented query/page files
+- extract canonical analytical truth into shared DuckDB marts/views
+- keep renderer-local logic thin
 
 Planned milestones:
 
-### C1. Standard analysis baseline
-Always include core analysis pages and queries.
+### C1. Analysis inventory
+Classify existing analysis into:
+- canonical analytical truth
+- renderer-local convenience queries
+- presentational transforms only
 
-### C2. Feature-contributed analysis
+### C2. Canonical marts/views
+Move canonical aggregations and report-ready datasets into shared DuckDB-backed objects.
+
+### C3. Chart-ready and appendix-ready outputs
+Define stable outputs for:
+- chart-ready datasets
+- appendix tables
+- report-ready summaries
+- service/category aggregations
+
+### C4. Analysis contract tests
+Add tests that protect canonical analysis outputs independent of any renderer.
+
+## Track D — Analysis-site (Evidence) as interactive UI
+
+**Status:** after Track C begins
+
+Purpose:
+- preserve a strong live analysis experience
+- stop using Evidence as the place where new canonical truth is invented
+
+Planned milestones:
+
+### D1. Thin analysis-site contract
+Limit page-local logic to:
+- filtering
+- slicing
+- light presentation-local transforms
+
+### D2. Feature-contributed analysis pages
 Enabled features can contribute:
-- SQL/views
-- sources
-- generated Evidence pages
-- reusable computed blocks
+- analysis pages
+- source queries
+- reusable visual blocks
 
-### C3. Analysis-site profile build
-`build-web-draft --profile analysis_site` should produce a generated analysis site from:
-- current feature set
-- current DuckDB state
+### D3. Analysis-site profile build
+`build-analysis-site` or equivalent should generate the analysis UI from:
+- current feature state
+- canonical analysis marts/views
 - standard/generated analysis pages
 
-### C4. Ownership boundary
-Clarify which analysis pages are always generated, feature-generated, or later injected into other outputs.
+### D4. Optional future dashboard evaluation
+Evaluate whether some analysis outputs fit better as Quarto dashboards later, without removing the Evidence path prematurely.
 
-## Track D — Narrative/report composition model
+## Track E — Quarto report system
 
-**Status:** after Track B, parallel with or just after Track C
+**Status:** next, in parallel with Track C planning
 
 Purpose:
-- make report-style outputs react to the investigator-authored section tree
-- keep canonical narrative content renderer-neutral
+- make Quarto the canonical report/project system
+- stop trying to hand-build a publishing system inside CaseForge
 
 Planned milestones:
 
-### D1. Filesystem-first section tree
-`Sections/` path defines narrative hierarchy.
+### E1. Quarto project contract
+Define the generated Quarto project structure, config, profiles, data ingress, and output contract.
 
-### D2. `index.md` and sibling semantics
+### E2. Report authoring tree becomes Quarto-native
+Move the canonical report tree toward `.qmd` for rendered report outputs while keeping freeform notes/reference material separate.
+
+### E3. Report profiles
+Map CaseForge report intentions to Quarto profiles, e.g.:
+- `report_site`
+- `pdf_report`
+- later notices/letters/summary variants
+
+### E4. Quarto proof of concept
+Generate a minimal Quarto report project from:
+- canonical analysis outputs
+- authored report files
+- current feature/profile config
+
+### E5. Typst-backed PDF evaluation
+Use Quarto’s Typst output path to assess whether it is suitable for the primary formal report workflow.
+
+## Track F — Report authoring and composition
+
+**Status:** after E1/E2 are stable
+
+Purpose:
+- define how authored report files become a coherent report across HTML/PDF outputs
+
+Planned milestones:
+
+### F1. Filesystem-first report tree
+A directory tree defines report hierarchy.
+
+### F2. `index.qmd` and sibling semantics
 Define:
-- folder = page/section node
-- `index.md` = page lead/body
-- sibling `.md` files = ordered blocks on a page
+- folder = report node
+- `index.qmd` = page/chapter metadata + lead/body
+- sibling files = ordered blocks on that page
 - subfolders = child pages
 
-### D3. Frontmatter as override
-Frontmatter refines title, order, outputs, and optional placement overrides.
+### F3. Frontmatter as refinement
+Use frontmatter to refine title, order, outputs, and report-specific behavior.
 
-### D4. Fallback behavior
-If placement cannot be resolved, do not silently drop authored content.
+### F4. Deterministic composition/fallbacks
+Never silently drop authored content when composition cannot be resolved.
 
-### D5. Report-site build profile
-`build-web-draft --profile report_site` should build a narrative/report website from the section tree plus selected analysis content.
+## Track G — Shared computed block system
 
-## Track E — Shared computed block system
-
-**Status:** after D begins
+**Status:** after Tracks C and E are underway
 
 Purpose:
-- provide a renderer-neutral way to reference figures, tables, metrics, and other computed content from canonical markdown
+- provide a shared way for report files to reference computed figures, tables, metrics, and blocks without duplicating heavy analysis logic
 
 Planned milestones:
 
-### E1. Block registry
-Features and core analysis register named blocks.
+### G1. Block registry
+Core analysis and features register named blocks.
 
-### E2. Canonical directives
-Introduce CaseForge directives such as:
+### G2. Canonical directives
+Introduce renderer-aware but report-author-friendly directives such as:
 - `cf.metric`
 - `cf.table`
 - `cf.figure`
 
-### E3. WEB adapter
-Map those directives to Evidence-native output.
+### G3. Quarto mapping
+Map block references into Quarto report outputs.
 
-### E4. PDF adapter
-Map the same directives to PDF/LaTeX-compatible output.
+### G4. Evidence mapping
+Optionally map the same blocks into analysis-site widgets where appropriate.
 
-## Track F — Obsidian compatibility
-
-**Status:** later, after Tracks D and E are stable
-
-Purpose:
-- allow canonical authored sections to take advantage of useful Obsidian ergonomics without making renderers depend on Obsidian itself
-
-Planned milestones:
-
-### F1. Limited syntax support
-Support a controlled subset such as:
-- `[[Note]]`
-- `![[Note]]`
-
-### F2. Snapshot-time resolution
-Resolve links/embeds during ingestion or snapshot generation.
-
-### F3. Optional plugin later
-Potential future work:
-- validation helpers
-- placement autocomplete
-- local preview helpers
-
-## Track G — PDF renderer
-
-**Status:** later, after D and E
-
-Purpose:
-- build PDF outputs from the same canonical section tree and computed block system
-
-Planned milestones:
-
-### G1. PDF output profile
-Define `pdf_report` behavior explicitly.
-
-### G2. PDF bootstrap/runtime
-Create a stable PDF runtime/bootstrap model.
-
-### G3. Narrative composition in PDF
-Use the same canonical narrative tree.
-
-### G4. Computed block rendering in PDF
-Use the same block registry/directive model established for WEB.
-
-## Track H — State, snapshots, API, and UI
+## Track H — Obsidian / note ecosystem support
 
 **Status:** later
 
 Purpose:
-- make the persistent workspace experience visible and operable without changing the canonical source-of-truth model
+- preserve investigator-friendly local authoring while keeping renderers independent
 
 Planned milestones:
 
-### H1. Workspace/build state tracking
-Track stale outputs, feature changes, build timestamps, and snapshots.
+### H1. Note/reference separation
+Distinguish canonical report files from freeform notes/reference material.
 
-### H2. Snapshot/freeze model
-Support preserving specific investigation points in time.
+### H2. Limited Obsidian syntax support
+Support a controlled subset such as:
+- `[[Note]]`
+- `![[Note]]`
 
-### H3. FastAPI backend
-Build the orchestration layer after config/state contracts are stable.
+### H3. Snapshot-time resolution
+Resolve supported links/embeds during build or snapshot generation rather than inside renderers.
 
-### H4. UI
-Build on top of the stable config/state model rather than becoming the source of truth.
+## Track I — API and UI
 
-## Superseded assumptions
+**Status:** later
 
-The following older assumptions are now considered obsolete:
+Purpose:
+- improve usability without making UI the source of truth
 
-1. **Features are chosen once at workspace init and never change**
-   - superseded by config-driven feature lifecycle
+Planned milestones:
 
-2. **Analysis site depends on authored narrative sections**
-   - superseded by separate analysis vs report output profiles
+### I1. Local application shell
+Wrap the local-first workflow in a local executable/app experience.
 
-3. **Exact slot matching is the primary placement model**
-   - superseded by filesystem-first narrative composition with frontmatter as override
+### I2. Workspace/build state visibility
+Show stale outputs, feature changes, build timestamps, and snapshot information.
 
-4. **Canonical sections may become Evidence-native**
-   - superseded by renderer-neutral computed block directives
-
-5. **FastAPI/UI should be implemented immediately after WEB baseline**
-   - superseded by the need to stabilize feature/output/content contracts first
-
-## Immediate next work
-
-The next code track should continue inside **Track B**:
-
-1. implement init-time feature section seeding for explicitly selected features
-2. keep post-init feature config changes build-affecting but non-destructive to `Sections/`
-3. continue refining output profile semantics while preserving the validated baseline
+### I3. Optional server mode later
+Only after the local-first workflow is solid should server-hosted coordination be considered.

@@ -13,24 +13,25 @@ The goal is to avoid one-off custom feature behavior.
 Illustrative YAML shape:
 
 ```yaml
-id: cross_chain
-category: analysis
+id: cross-chain-activity
+category: blockchain_analysis
 label: Cross-chain activity
 summary: Cross-chain tracing and matching analysis
 
 contributes:
-  sql_views: true
-  source_queries: true
-  analysis_pages: true
-  section_seed_scaffolds: true
-  computed_blocks: true
+  canonical_analysis_sql: true
+  analysis_site_pages: true
+  analysis_site_sources: true
+  report_section_seed_scaffolds: true
+  report_blocks: true
+  quarto_partials: false
 
 build_impacts:
   requires_add_files: false
   requires_normalize: false
   requires_build_db: true
-  requires_web_rebuild: true
-  requires_pdf_rebuild: false
+  requires_analysis_site_rebuild: true
+  requires_report_rebuild: true
 
 defaults:
   enabled: false
@@ -38,11 +39,13 @@ defaults:
     matching_mode: balanced
     defi_swap_matching: true
 
-section_seed_scaffolds:
-  - path: Sections/Report/Analysis/Cross-Chain/index.md
-    template: section-seeds/cross-chain/index.md
-  - path: Sections/Appendix/Cross-Chain/notes.md
-    template: section-seeds/cross-chain/notes.md
+report_section_seed_scaffolds:
+  - path: Sections/On-Chain/cross-chain-activity.qmd
+    template: section-seeds/On-Chain/cross-chain-activity.qmd
+
+report_blocks:
+  - id: cross_chain_pairs_overview
+    source: canonical-analysis/cross_chain_pairs.sql
 ```
 
 ## Required concepts
@@ -54,19 +57,15 @@ A feature definition should declare:
 - build impacts
 - defaults
 
-If a feature contributes investigator-facing scaffolds, it should declare them explicitly.
+If a feature contributes investigator-facing report scaffolds, it should declare them explicitly.
 
 ## Section seeding policy
 
 The current design policy is:
 
-- init-selected features may seed section scaffolds during `init-workspace`
+- init-selected features may seed report scaffolds during `init-workspace`
 - post-init edits to `.caseforge/features.yaml` do **not** automatically mutate `Sections/`
 - if later we support post-init seeding, it should be an explicit investigator action
-
-Because that later command does not exist yet, the schema should **not** invent unnecessary lifecycle modes for section seeding today.
-
-If a future explicit reseed command exists, the schema can grow then.
 
 ## Planned feature families
 
@@ -75,17 +74,17 @@ Examples:
 - OSINT
 - cyber/infrastructure
 - legal/process
-- output-only/reporting
+- report-only/output-only
 
 ## Contribution buckets
 
 Planned contribution types:
-- SQL/views
-- source queries
-- generated WEB pages
-- section seed scaffolds/prompts
-- computed block registrations
-- future PDF fragments
+- canonical analysis SQL/views
+- analysis-site pages
+- analysis-site sources
+- report section seed scaffolds/prompts
+- report block registrations
+- Quarto partials/includes
 
 ## Design goal
 

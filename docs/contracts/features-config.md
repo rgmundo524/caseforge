@@ -4,17 +4,18 @@
 
 ## Purpose
 
-This document defines the planned canonical YAML config shape for dynamic feature control in a case workspace.
+This document defines the canonical YAML config shape for dynamic feature control in a case workspace.
 
 The goals are:
 - investigator-editable feature control
 - strict schema validation
 - grouped settings by investigative domain
 - no custom configuration language
+- clear separation between build/runtime behavior and authored report tree ownership
 
 ## File location
 
-Planned canonical location:
+Canonical location:
 
 ```text
 .caseforge/features.yaml
@@ -26,7 +27,7 @@ Planned canonical location:
 schema_version: 1
 
 features:
-  cross_chain:
+  cross-chain-activity:
     enabled: true
     settings:
       defi_swap_matching: true
@@ -35,12 +36,6 @@ features:
   urls:
     enabled: true
     settings: {}
-
-  osint:
-    enabled: false
-    settings:
-      resolve_domains: true
-      cluster_aliases: true
 
 outputs:
   analysis_site:
@@ -51,6 +46,12 @@ outputs:
 
   report_site:
     enabled: true
+    include_sections: true
+    include_standard_analysis: true
+    include_feature_analysis: true
+
+  pdf_report:
+    enabled: false
     include_sections: true
     include_standard_analysis: true
     include_feature_analysis: true
@@ -86,24 +87,14 @@ Planned validation rules:
 - feature settings should be validated against feature-specific schemas
 - output profile ids should be validated against known profile contracts
 
-## Default layering
-
-Planned configuration layering:
-1. CaseForge defaults
-2. template defaults
-3. feature defaults
-4. workspace feature config
-5. output-profile-specific overrides
-
-## Design notes
-
-The schema should feel grouped and discoverable, but still remain standard YAML.
+## What changes when this file changes
 
 Editing this file after init changes:
 - build/runtime behavior
 - engine-facing active features
 - generated analysis/output behavior
+- report profile behavior
 
-Editing this file after init should **not** automatically restructure `Sections/`.
+Editing this file after init should **not** automatically restructure the canonical report tree in `Sections/`.
 
 Init-selected feature scaffolds are a separate `init-workspace` concern, not an automatic side effect of later config edits.
